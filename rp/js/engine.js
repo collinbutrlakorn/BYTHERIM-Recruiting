@@ -457,6 +457,41 @@ window.SimEngine = {
     this.logNews("Regular season complete. National and Conference awards calculated.");
   },
 
+  async runOffseason() {
+    if (this.state.phase === 'Preseason') {
+      alert("Simulate the regular season first before advancing to the offseason.");
+      return;
+    }
+    if (!this.state.simCompleted) {
+      alert("Finish the current season before advancing.");
+      return;
+    }
+
+    const classProgression = { 'FR': 'SO', 'SO': 'JR', 'JR': 'SR', 'SR': 'GRADUATED', 'GR': 'GRADUATED' };
+    
+    this.state.teams.forEach(team => {
+      team.roster.forEach(p => {
+        p.class = classProgression[p.class] || 'GRADUATED';
+        p.rating = Math.min(99, p.rating + Math.floor(Math.random() * 4)); 
+      });
+      team.roster = team.roster.filter(p => p.class !== 'GRADUATED');
+    });
+
+    this.state.year += 1;
+    this.state.week = 0;
+    this.state.phase = 'Preseason';
+    this.state.simCompleted = false;
+    
+    this.filterActiveData();
+    this.logNews(`Advanced to ${this.state.year} Offseason. Graduated seniors cleared; incoming recruits added.`);
+    
+    document.getElementById('statsBody').innerHTML = `<tr><td colspan="25" class="empty-table-msg">Simulate games to view leaderboards.</td></tr>`;
+    document.getElementById('standingsContainer').innerHTML = `<p class="empty-table-msg">Simulate games to view standings.</p>`;
+    
+    this.syncUI();
+    await this.saveStateToDB();
+  },
+
   syncUI() {
     const yrElem = document.getElementById('currentYearDisplay');
     if (yrElem) yrElem.innerText = `${this.state.year}-${(this.state.year + 1).toString().slice(2)}`;
@@ -569,7 +604,7 @@ window.SimEngine = {
 
     let tbodyHtml = '';
     if (pool.length === 0) {
-      tbodyHtml = `<tr><td colspan="25" style="text-align: center; color: #7d8296;">No players found for conference: ${this.state.confFilter}</td></tr>`;
+      tbodyHtml = `<tr><td colspan="25" class="empty-table-msg">No players found for conference: ${this.state.confFilter}</td></tr>`;
     } else {
       pool.forEach((p) => {
         tbodyHtml += `<tr>`;
@@ -599,13 +634,13 @@ window.SimEngine = {
         topTeamsHtml += `
           <div class="team-badge clickable-school" onclick="SimEngine.openTeamModal('${safeSchool}')">
             <span class="team-rank">#${i+1}</span>
-            <img src="${this.getTeamLogo(this.state.teams[i].school)}" style="width:20px; height:20px; object-fit:contain;">
+            <img src="${this.getTeamLogo(this.state.teams[i].school)}" class="sm-logo">
             ${this.state.teams[i].school}
           </div>
         `;
       }
     }
-    dashTopTeams.innerHTML = topTeamsHtml || `<p style="color:#7d8296;">Simulate games to generate rankings.</p>`;
+    dashTopTeams.innerHTML = topTeamsHtml || `<p class="sub-text">Simulate games to generate rankings.</p>`;
     
     if(this.state.week > 0) {
       this.populateDashList('dashPts', 'ppg');
@@ -626,7 +661,7 @@ window.SimEngine = {
       if (sorted[i]) {
         const safeName = sorted[i].name.replace(/'/g, "\\'");
         html += `<div class="leader-row">
-          <span>${i+1}. <span class="clickable-player" onclick="SimEngine.openPlayerModal('${safeName}')">${sorted[i].name}</span> <span style="font-size:0.75rem;">(${sorted[i].school})</span></span>
+          <span>${i+1}. <span class="clickable-player" onclick="SimEngine.openPlayerModal('${safeName}')">${sorted[i].name}</span> <span class="leader-school">(${sorted[i].school})</span></span>
           <span>${sorted[i].stats[statKey]}</span>
         </div>`;
       }
@@ -640,12 +675,12 @@ window.SimEngine = {
 
     let apTop25 = this.state.teams.slice(0, 25);
     let apHtml = `
-      <div style="background: #111118; border: 1px solid rgba(255,255,255,0.08); border-radius: 12px; padding: 1.5rem; margin-bottom: 2rem;">
-        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
-          <h3 style="margin: 0; color: #fff; font-size: 1.4rem;">AP TOP 25</h3>
+      <div class="standings-card">
+        <div class="flex-between mb-1">
+          <h3>AP TOP 25</h3>
         </div>
         <div class="table-scroll">
-          <table>
+          <table class="data-table">
             <thead>
               <tr><th>AP Rank</th><th>Team</th><th>Conf</th><th>Overall</th><th>Conf W-L</th><th>Team OVR</th></tr>
             </thead>
@@ -656,17 +691,17 @@ window.SimEngine = {
       const safeSchool = t.school.replace(/'/g, "\\'");
       apHtml += `
         <tr ${isHidden}>
-          <td style="font-weight:800; color:var(--brand-color);">#${idx + 1}</td>
+          <td class="rank-cell">#${idx + 1}</td>
           <td>
-            <div style="display:flex; align-items:center; gap:8px;" class="clickable-school" onclick="SimEngine.openTeamModal('${safeSchool}')">
-              <img src="${this.getTeamLogo(t.school)}" style="width:20px; height:20px; object-fit:contain;">
-              <span style="font-weight:700; color:#fff;">${t.school}</span>
+            <div class="team-cell-wrap clickable-school" onclick="SimEngine.openTeamModal('${safeSchool}')">
+              <img src="${this.getTeamLogo(t.school)}" class="sm-logo">
+              <span class="team-name-cell">${t.school}</span>
             </div>
           </td>
-          <td style="color:#7d8296;">${t.conference || 'NCAA'}</td>
+          <td class="sub-text">${t.conference || 'NCAA'}</td>
           <td>${t.simData.wins}-${t.simData.losses}</td>
           <td>${t.simData.confWins}-${t.simData.confLosses}</td>
-          <td style="color:#7d8296;">${t.simData.teamOvr.toFixed(1)}</td>
+          <td class="sub-text">${t.simData.teamOvr.toFixed(1)}</td>
         </tr>`;
     });
 
@@ -674,7 +709,7 @@ window.SimEngine = {
             </tbody>
           </table>
         </div>
-        ${apTop25.length > 10 ? `<button class="sim-btn sim-btn-secondary" style="margin-top: 1rem; width: 100%;" onclick="SimEngine.toggleApTop25(this)">See More (Top 25)</button>` : ''}
+        ${apTop25.length > 10 ? `<button class="sim-btn sim-btn-secondary w-100 mt-1" onclick="SimEngine.toggleApTop25(this)">See More (Top 25)</button>` : ''}
       </div>`;
 
     const confList = ['ACC', 'AAC', 'A10', 'Big 12', 'Big Ten', 'Big East', 'SEC', 'Pac-12', 'WCC', 'Mountain West'];
@@ -686,8 +721,8 @@ window.SimEngine = {
       }
     });
 
-    let confsHtml = `<h3 style="color:#fff; margin: 2rem 0 1rem 0; font-size:1.4rem;">CONFERENCE STANDINGS</h3>`;
-    confsHtml += `<div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(360px, 1fr)); gap: 1.5rem;">`;
+    let confsHtml = `<h3 class="standings-header">CONFERENCE STANDINGS</h3>`;
+    confsHtml += `<div class="conf-standings-grid">`;
 
     displayConfs.forEach(confName => {
       let confTeams = this.state.teams.filter(t => (t.conference || '').toLowerCase() === confName.toLowerCase());
@@ -702,10 +737,10 @@ window.SimEngine = {
       let confSafeId = confName.replace(/[^a-zA-Z0-9]/g, '_');
 
       confsHtml += `
-        <div style="background: #111118; border: 1px solid rgba(255,255,255,0.06); border-radius: 12px; padding: 1.25rem;">
-          <h4 style="margin:0 0 1rem 0; color:var(--brand-color); font-size:1.1rem; border-bottom:1px solid rgba(255,255,255,0.08); padding-bottom:0.5rem; text-transform:uppercase;">${confName}</h4>
+        <div class="conf-card">
+          <h4 class="conf-card-title">${confName}</h4>
           <div class="table-scroll">
-            <table>
+            <table class="data-table">
               <thead>
                 <tr><th>Rank</th><th>Team</th><th>Conf W-L</th><th>Overall</th></tr>
               </thead>
@@ -714,21 +749,20 @@ window.SimEngine = {
       confTeams.forEach((t, idx) => {
         let isHidden = idx >= 5 ? `class="conf-row-${confSafeId}" style="display:none;"` : '';
         let isApRanked = t.apRank !== null && t.apRank <= 25;
-        let rowStyle = isApRanked ? 'style="background: rgba(255, 102, 0, 0.14); border-left: 3px solid var(--brand-color);"' : '';
-        let apTag = isApRanked ? ` <span style="color:var(--brand-color); font-size:0.85rem; font-weight:800;">(#${t.apRank})</span>` : '';
-        const safeSchool = t.school.replace(/'/g, "\\'");
+        let rowStyleClass = isApRanked ? 'ap-ranked-row' : '';
+        let apTag = isApRanked ? ` <span class="ap-rank-tag">(#${t.apRank})</span>` : '';
 
         confsHtml += `
-          <tr ${isHidden} ${rowStyle}>
-            <td style="font-weight:700; color:#a1a5b8;">${idx+1}</td>
+          <tr class="${isHidden} ${rowStyleClass}">
+            <td class="bold-sub-text">${idx+1}</td>
             <td>
-              <div style="display:flex; align-items:center; gap:6px;" class="clickable-school" onclick="SimEngine.openTeamModal('${safeSchool}')">
-                <img src="${this.getTeamLogo(t.school)}" style="width:18px; height:18px; object-fit:contain;">
-                <span style="font-weight:700; color:#fff;">${t.school}</span>${apTag}
+              <div class="team-cell-wrap clickable-school" onclick="SimEngine.openTeamModal('${t.school.replace(/'/g, "\\'")}')">
+                <img src="${this.getTeamLogo(t.school)}" class="sm-logo">
+                <span class="team-name-cell">${t.school}</span>${apTag}
               </div>
             </td>
-            <td style="font-weight:800; color:#fff;">${t.simData.confWins}-${t.simData.confLosses}</td>
-            <td style="color:#7d8296; font-size:0.9rem;">${t.simData.wins}-${t.simData.losses}</td>
+            <td class="bold-text">${t.simData.confWins}-${t.simData.confLosses}</td>
+            <td class="sub-text-sm">${t.simData.wins}-${t.simData.losses}</td>
           </tr>`;
       });
 
@@ -737,7 +771,7 @@ window.SimEngine = {
             </table>
           </div>`;
       if (confTeams.length > 5) {
-        confsHtml += `<button class="sim-btn sim-btn-secondary" style="margin-top:0.75rem; padding:6px 10px; font-size:0.85rem;" onclick="SimEngine.toggleConfStandings('${confSafeId}', this)">See More (${confTeams.length - 5} Teams)</button>`;
+        confsHtml += `<button class="sim-btn sim-btn-secondary btn-sm mt-1" onclick="SimEngine.toggleConfStandings('${confSafeId}', this)">See More (${confTeams.length - 5} Teams)</button>`;
       }
       confsHtml += `</div>`;
     });
@@ -761,16 +795,10 @@ window.SimEngine = {
   },
 
   updateAwardsTab() {
-    const natGrid = document.getElementById('nationalAwardsGrid');
-    const aaContainer = document.getElementById('allAmericanContainer');
-    const confContainer = document.getElementById('confAwardsContainer');
-
-    if (!natGrid || !aaContainer || !confContainer) return;
-
     if (!this.state.simCompleted) {
-      natGrid.innerHTML = `<p style="color: #7d8296;">Complete the season to calculate National Award winners.</p>`;
-      aaContainer.innerHTML = `<p style="color: #7d8296;">Complete the season to view All-American teams.</p>`;
-      confContainer.innerHTML = `<p style="color: #7d8296;">Complete the season to view conference award winners.</p>`;
+      document.getElementById('nationalAwardsGrid').innerHTML = `<p class="sub-text">Complete the season to calculate National Award winners.</p>`;
+      document.getElementById('allAmericanContainer').innerHTML = `<p class="sub-text">Complete the season to view All-American teams.</p>`;
+      document.getElementById('confAwardsContainer').innerHTML = `<p class="sub-text">Complete the season to view conference award winners.</p>`;
       return;
     }
 
@@ -814,7 +842,7 @@ window.SimEngine = {
           <div class="award-title">${a.title}</div>
           <div class="award-sub">${a.sub}</div>
           <div class="award-winner">
-            <img src="${this.getTeamLogo(a.winner.school)}" style="width:36px; height:36px; object-fit:contain;">
+            <img src="${this.getTeamLogo(a.winner.school)}" class="award-logo">
             <div class="award-winner-info">
               <span class="award-winner-name clickable-player" onclick="SimEngine.openPlayerModal('${safeName}')">${a.winner.name}</span>
               <span class="award-winner-school">${a.winner.school} (${a.winner.pos} &bull; ${a.winner.class})</span>
@@ -824,7 +852,7 @@ window.SimEngine = {
         </div>
       `;
     });
-    natGrid.innerHTML = natHtml;
+    document.getElementById('nationalAwardsGrid').innerHTML = natHtml;
 
     const sortedAll = [...players].sort((a,b) => b.awardScore - a.awardScore);
     const aa1 = sortedAll.slice(0, 5);
@@ -839,23 +867,23 @@ window.SimEngine = {
         const safeName = p.name.replace(/'/g, "\\'");
         rows += `
           <tr>
-            <td style="font-weight:800; color:var(--brand-color);">${idx+1}</td>
+            <td class="highlight-text">${idx+1}</td>
             <td>
-              <div style="display:flex; align-items:center; gap:6px;">
-                <img src="${this.getTeamLogo(p.school)}" style="width:16px; height:16px; object-fit:contain;">
+              <div class="team-cell-wrap">
+                <img src="${this.getTeamLogo(p.school)}" class="xs-logo">
                 <span class="clickable-player" onclick="SimEngine.openPlayerModal('${safeName}')">${p.name}</span>
               </div>
             </td>
             <td>${p.school}</td>
-            <td style="color:#7d8296;">${p.pos}</td>
-            <td style="font-weight:700; color:#fff;">${p.stats.ppg} PPG</td>
+            <td class="sub-text">${p.pos}</td>
+            <td class="bold-text">${p.stats.ppg} PPG</td>
           </tr>`;
       });
       return `
-        <div style="background: #111118; border: 1px solid rgba(255,255,255,0.06); border-radius: 10px; padding: 1rem;">
-          <h5 style="margin: 0 0 0.75rem 0; color: #fff; font-size: 1.1rem; text-transform: uppercase; border-bottom: 1px solid rgba(255,255,255,0.08); padding-bottom: 0.5rem;">${teamName}</h5>
+        <div class="award-table-card">
+          <h5 class="award-table-title">${teamName}</h5>
           <div class="table-scroll">
-            <table>
+            <table class="data-table">
               <thead><tr><th>#</th><th>Player</th><th>School</th><th>Pos</th><th>PPG</th></tr></thead>
               <tbody>${rows}</tbody>
             </table>
@@ -864,7 +892,7 @@ window.SimEngine = {
       `;
     };
 
-    aaContainer.innerHTML = 
+    document.getElementById('allAmericanContainer').innerHTML = 
       renderAaCard("1st Team All-American", aa1) +
       renderAaCard("2nd Team All-American", aa2) +
       renderAaCard("3rd Team All-American", aa3);
@@ -874,20 +902,16 @@ window.SimEngine = {
 
   renderConferenceAwards(confName) {
     this.state.selectedAwardConf = confName;
-    const titleEl = document.getElementById('confAwardsTitle');
-    if (titleEl) titleEl.innerText = `${confName} Conference Honors`;
+    document.getElementById('confAwardsTitle').innerText = `${confName} Conference Honors`;
     
-    const confContainer = document.getElementById('confAwardsContainer');
-    if (!confContainer) return;
-
     if (!this.state.simCompleted) {
-      confContainer.innerHTML = `<p style="color: #7d8296;">Complete the season to view conference awards.</p>`;
+      document.getElementById('confAwardsContainer').innerHTML = `<p class="sub-text">Complete the season to view conference awards.</p>`;
       return;
     }
 
     const confPlayers = this.state.activePlayers.filter(p => (p.conference || '').toLowerCase() === confName.toLowerCase());
     if (confPlayers.length === 0) {
-      confContainer.innerHTML = `<p style="color: #7d8296;">No players found for conference: ${confName}</p>`;
+      document.getElementById('confAwardsContainer').innerHTML = `<p class="sub-text">No players found for conference: ${confName}</p>`;
       return;
     }
 
@@ -915,7 +939,7 @@ window.SimEngine = {
           <div class="award-title">Player of the Year</div>
           <div class="award-sub">${confName} POY</div>
           <div class="award-winner">
-            <img src="${this.getTeamLogo(cpoy.school)}" style="width:32px; height:32px; object-fit:contain;">
+            <img src="${this.getTeamLogo(cpoy.school)}" class="award-logo">
             <div class="award-winner-info">
               <span class="award-winner-name clickable-player" onclick="SimEngine.openPlayerModal('${safeN(cpoy)}')">${cpoy.name}</span>
               <span class="award-winner-school">${cpoy.school} &bull; ${cpoy.stats.ppg} PPG, ${cpoy.stats.rpg} RPG</span>
@@ -927,7 +951,7 @@ window.SimEngine = {
           <div class="award-title">Defensive Player of the Year</div>
           <div class="award-sub">${confName} DPOY</div>
           <div class="award-winner">
-            <img src="${this.getTeamLogo(cdpoy.school)}" style="width:32px; height:32px; object-fit:contain;">
+            <img src="${this.getTeamLogo(cdpoy.school)}" class="award-logo">
             <div class="award-winner-info">
               <span class="award-winner-name clickable-player" onclick="SimEngine.openPlayerModal('${safeN(cdpoy)}')">${cdpoy.name}</span>
               <span class="award-winner-school">${cdpoy.school} &bull; ${cdpoy.stats.stl} SPG, ${cdpoy.stats.blk} BPG</span>
@@ -939,7 +963,7 @@ window.SimEngine = {
           <div class="award-title">Rookie of the Year</div>
           <div class="award-sub">${confName} ROTY / Freshman of Year</div>
           <div class="award-winner">
-            <img src="${this.getTeamLogo(croty.school)}" style="width:32px; height:32px; object-fit:contain;">
+            <img src="${this.getTeamLogo(croty.school)}" class="award-logo">
             <div class="award-winner-info">
               <span class="award-winner-name clickable-player" onclick="SimEngine.openPlayerModal('${safeN(croty)}')">${croty.name}</span>
               <span class="award-winner-school">${croty.school} &bull; ${croty.stats.ppg} PPG</span>
@@ -951,7 +975,7 @@ window.SimEngine = {
           <div class="award-title">Sixth Man of the Year</div>
           <div class="award-sub">${confName} 6MOY</div>
           <div class="award-winner">
-            <img src="${this.getTeamLogo(c6moy.school)}" style="width:32px; height:32px; object-fit:contain;">
+            <img src="${this.getTeamLogo(c6moy.school)}" class="award-logo">
             <div class="award-winner-info">
               <span class="award-winner-name clickable-player" onclick="SimEngine.openPlayerModal('${safeN(c6moy)}')">${c6moy.name}</span>
               <span class="award-winner-school">${c6moy.school} &bull; ${c6moy.stats.ppg} PPG</span>
@@ -960,14 +984,14 @@ window.SimEngine = {
         </div>
       </div>
 
-      <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 1.25rem;">
+      <div class="all-american-container">
         ${this.renderConfTeamTable("1st Team All-" + confName, conf1st)}
         ${this.renderConfTeamTable("2nd Team All-" + confName, conf2nd)}
         ${this.renderConfTeamTable("All-Freshman Team", confFreshTeam)}
       </div>
     `;
 
-    confContainer.innerHTML = html;
+    document.getElementById('confAwardsContainer').innerHTML = html;
   },
 
   renderConfTeamTable(title, playerList) {
@@ -976,26 +1000,26 @@ window.SimEngine = {
       const safeName = p.name.replace(/'/g, "\\'");
       rows += `
         <tr>
-          <td style="font-weight:700; color:#a1a5b8;">${idx+1}</td>
+          <td class="bold-sub-text">${idx+1}</td>
           <td>
-            <div style="display:flex; align-items:center; gap:6px;">
-              <img src="${this.getTeamLogo(p.school)}" style="width:16px; height:16px; object-fit:contain;">
+            <div class="team-cell-wrap">
+              <img src="${this.getTeamLogo(p.school)}" class="xs-logo">
               <span class="clickable-player" onclick="SimEngine.openPlayerModal('${safeName}')">${p.name}</span>
             </div>
           </td>
           <td>${p.school}</td>
-          <td style="color:#7d8296;">${p.pos}</td>
-          <td style="font-weight:700; color:#fff;">${p.stats ? p.stats.ppg : '0.0'} PPG</td>
+          <td class="sub-text">${p.pos}</td>
+          <td class="bold-text">${p.stats ? p.stats.ppg : '0.0'} PPG</td>
         </tr>`;
     });
 
     return `
-      <div style="background: #111118; border: 1px solid rgba(255,255,255,0.06); border-radius: 10px; padding: 1rem;">
-        <h5 style="margin: 0 0 0.75rem 0; color: #fff; font-size: 1.05rem; text-transform: uppercase; border-bottom: 1px solid rgba(255,255,255,0.08); padding-bottom: 0.5rem;">${title}</h5>
+      <div class="award-table-card">
+        <h5 class="award-table-title">${title}</h5>
         <div class="table-scroll">
-          <table>
+          <table class="data-table">
             <thead><tr><th>#</th><th>Player</th><th>School</th><th>Pos</th><th>PPG</th></tr></thead>
-            <tbody>${rows || '<tr><td colspan="5" style="text-align:center; color:#7d8296;">No qualifying players</td></tr>'}</tbody>
+            <tbody>${rows || '<tr><td colspan="5" class="empty-table-msg">No qualifying players</td></tr>'}</tbody>
           </table>
         </div>
       </div>
@@ -1007,18 +1031,16 @@ window.SimEngine = {
     if (!team) return;
 
     let rank = team.apRank;
-    const logoEl = document.getElementById('modalTeamLogo');
-    if (logoEl) logoEl.src = this.getTeamLogo(team.school);
-    
+    document.getElementById('modalTeamLogo').src = this.getTeamLogo(team.school);
     document.getElementById('modalTeamName').innerText = team.school;
     document.getElementById('modalTeamYear').innerText = `${this.state.year}-${(this.state.year+1).toString().slice(2)}`;
     
-    const rankEl = document.getElementById('modalTeamRank');
     if (this.state.week > 0) {
       if (this.state.simCompleted && rank && rank <= 25) {
-        if (rankEl) { rankEl.style.display = 'block'; rankEl.innerText = `#${rank}`; }
+        document.getElementById('modalTeamRank').style.display = 'block';
+        document.getElementById('modalTeamRank').innerText = `#${rank}`;
       } else {
-        if (rankEl) rankEl.style.display = 'none';
+        document.getElementById('modalTeamRank').style.display = 'none';
       }
 
       document.getElementById('modalTeamRecord').innerText = `${team.simData.wins}-${team.simData.losses}`;
@@ -1028,7 +1050,7 @@ window.SimEngine = {
       document.getElementById('modalTeamPPG').innerText = teamPpg.toFixed(1);
       document.getElementById('modalOppPPG').innerText = (teamPpg + (team.simData.losses - team.simData.wins) * 0.4).toFixed(1);
     } else {
-      if (rankEl) rankEl.style.display = 'none';
+      document.getElementById('modalTeamRank').style.display = 'none';
       document.getElementById('modalTeamRecord').innerText = "0-0";
       document.getElementById('modalConfRecord').innerText = "0-0";
       document.getElementById('modalTeamPPG').innerText = "0.0";
@@ -1042,11 +1064,11 @@ window.SimEngine = {
     
     let rHtml = '';
     rPlayers.forEach((p, idx) => {
-      let statsStr = this.state.week > 0 ? `<span style="display:block; font-size:0.8rem; color:var(--brand-color); margin-top:4px;">${p.stats.ppg} PPG | ${p.stats.mpg} MPG</span>` : '';
+      let statsStr = this.state.week > 0 ? `<span class="player-modal-substat">${p.stats.ppg} PPG | ${p.stats.mpg} MPG</span>` : '';
       const safeName = p.name.replace(/'/g, "\\'");
       rHtml += `
         <tr>
-          <td style="color:#7d8296;">${idx+1}</td>
+          <td class="sub-text">${idx+1}</td>
           <td><span class="clickable-player" onclick="SimEngine.openPlayerModal('${safeName}')">${p.name}</span> ${statsStr}</td>
           <td>${p.pos}</td>
           <td>${p.class}</td>
@@ -1063,17 +1085,14 @@ window.SimEngine = {
   },
 
   closeTeamModal() {
-    const modal = document.getElementById('teamModal');
-    if (modal) modal.classList.remove('active');
+    document.getElementById('teamModal').classList.remove('active');
   },
 
   openPlayerModal(playerName) {
     let player = this.state.activePlayers.find(p => p.name === playerName);
     if (!player) return;
 
-    const logoEl = document.getElementById('modalPlayerLogo');
-    if (logoEl) logoEl.src = this.getTeamLogo(player.school);
-
+    document.getElementById('modalPlayerLogo').src = this.getTeamLogo(player.school);
     document.getElementById('modalPlayerName').innerText = player.name;
     document.getElementById('modalPlayerBio').innerText = `${player.school} | ${player.pos} | ${player.class} | ${player.ht} | ${player.wt} | ${player.hometown}`;
     
@@ -1087,16 +1106,16 @@ window.SimEngine = {
 
     let glHtml = '';
     if (!player.gameLog || player.gameLog.length === 0) {
-      glHtml = `<tr><td colspan="12" style="text-align: center; color: #7d8296;">No games played yet.</td></tr>`;
+      glHtml = `<tr><td colspan="12" class="empty-table-msg">No games played yet.</td></tr>`;
     } else {
       player.gameLog.forEach(g => {
         let type = g.isConf ? 'Conf' : 'Non-Conf';
         glHtml += `
           <tr>
-            <td style="font-weight: 700;">Wk ${g.week}</td>
-            <td style="color: #a1a5b8; font-size: 0.9rem;">${type}</td>
+            <td class="bold-text">Wk ${g.week}</td>
+            <td class="sub-text-sm">${type}</td>
             <td>${g.min}</td>
-            <td style="font-weight: 800; color: var(--brand-color);">${g.pts}</td>
+            <td class="highlight-col">${g.pts}</td>
             <td>${g.reb}</td>
             <td>${g.ast}</td>
             <td>${g.stl}</td>
@@ -1115,58 +1134,15 @@ window.SimEngine = {
   },
 
   closePlayerModal() {
-    const modal = document.getElementById('playerModal');
-    if (modal) modal.classList.remove('active');
-  },
-
-  async runOffseason() {
-    if (this.state.phase === 'Preseason') {
-      alert("Simulate the regular season first before advancing to the offseason.");
-      return;
-    }
-    if (!this.state.simCompleted) {
-      alert("Finish the current season before advancing.");
-      return;
-    }
-
-    const classProgression = { 'FR': 'SO', 'SO': 'JR', 'JR': 'SR', 'SR': 'GRADUATED', 'GR': 'GRADUATED' };
-    
-    this.state.teams.forEach(team => {
-      team.roster.forEach(p => {
-        p.class = classProgression[p.class] || 'GRADUATED';
-        p.rating = Math.min(99, p.rating + Math.floor(Math.random() * 4)); 
-      });
-      team.roster = team.roster.filter(p => p.class !== 'GRADUATED');
-    });
-
-    this.state.year += 1;
-    this.state.week = 0;
-    this.state.phase = 'Preseason';
-    this.state.simCompleted = false;
-    
-    this.filterActiveData();
-    this.syncUI();
-    
-    const sb = document.getElementById('statsBody');
-    if (sb) sb.innerHTML = `<tr><td colspan="25" style="text-align: center; color: #7d8296;">Simulate games to view leaderboards.</td></tr>`;
-    
-    const sc = document.getElementById('standingsContainer');
-    if (sc) sc.innerHTML = `<p style="text-align: center; color: #7d8296;">Simulate games to view standings.</p>`;
-    
-    this.logNews(`Advanced to ${this.state.year} Offseason. Graduated seniors cleared; incoming recruits added.`);
-    await this.saveStateToDB();
+    document.getElementById('playerModal').classList.remove('active');
   },
 
   logNews(msg) {
-    const feed = document.getElementById('newsFeed') || document.getElementById('storylines-feed');
+    const feed = document.getElementById('newsFeed');
     if (!feed) return;
     const item = document.createElement('div');
-    item.style.cssText = `padding: 10px 14px; background: #111118; border-left: 3px solid var(--brand-color, #ff6600); font-size: 0.95rem; margin-bottom: 0.5rem; animation: fadeIn 0.5s;`;
+    item.className = 'news-item';
     item.innerText = msg;
     feed.prepend(item);
   }
 };
-
-document.addEventListener('DOMContentLoaded', () => {
-  SimEngine.init();
-});
