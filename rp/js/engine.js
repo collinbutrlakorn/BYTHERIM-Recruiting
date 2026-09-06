@@ -20,9 +20,6 @@ window.SimEngine = {
     await this.initDatabase();
   },
 
-  /**
-   * IndexedDB Initialization & Syncing
-   */
   async initDatabase() {
     try {
       if (typeof db !== 'undefined' && db.leagueState) {
@@ -48,20 +45,17 @@ window.SimEngine = {
         }
       }
       
-      // Fallback or Initial Sheet Ingestion
       this.logNews("No active save file found. Initializing universe from Google Sheets...");
       await this.fetchData();
-      await this.saveStateToDB();
     } catch (err) {
       console.error("Database Init Error:", err);
-      this.logNews("Error initializing database. Loading fresh sheet data...");
+      this.logNews("Error initializing database. Loading fresh data...");
       await this.fetchData();
     }
   },
 
   async saveStateToDB() {
     if (typeof db === 'undefined' || !db.leagueState) return;
-    
     try {
       await db.transaction('rw', db.leagueState, db.teams, db.players, async () => {
         await db.leagueState.put({
@@ -71,14 +65,11 @@ window.SimEngine = {
           currentPhase: this.state.phase,
           simCompleted: this.state.simCompleted
         });
-
         await db.teams.clear();
         await db.teams.bulkAdd(this.state.teams);
-
         await db.players.clear();
         await db.players.bulkAdd(this.state.activePlayers);
       });
-      console.log("State synced to IndexedDB.");
     } catch (err) {
       console.error("Failed to save state to IndexedDB:", err);
     }
@@ -94,20 +85,12 @@ window.SimEngine = {
       const recruitsUrl = "https://docs.google.com/spreadsheets/d/e/2PACX-1vTWvXoqFJkVFqt36wbBBfgFYUvPKhWCZIztoLIB9sjpc55AiFTdFpJZHMztVgJHyFyy0mtO_MYGD76N/pub?gid=0&single=true&output=csv";
       const rostersUrl = "https://docs.google.com/spreadsheets/d/e/2PACX-1vS_KgPla_wVF3w_s8PGVIreieVKkfOuVuFqt1K25i3gHNa_NpL6MDPST1qnIw12V61COFsSkf2C03Q-/pub?gid=0&single=true&output=csv";
 
-      const [recruitsRes, rostersRes] = await Promise.all([
-        fetch(recruitsUrl),
-        fetch(rostersUrl)
-      ]);
+      const [recruitsRes, rostersRes] = await Promise.all([ fetch(recruitsUrl), fetch(rostersUrl) ]);
       
-      if (!recruitsRes.ok || !rostersRes.ok) {
-        throw new Error("Could not load Google Sheets CSVs");
-      }
+      if (!recruitsRes.ok || !rostersRes.ok) throw new Error("Could not load Google Sheets CSVs");
       
-      const recruitsText = await recruitsRes.text();
-      const rostersText = await rostersRes.text();
-      
-      const rawRecruits = this.parseCSV(recruitsText);
-      const rawRosters = this.parseCSV(rostersText);
+      const rawRecruits = this.parseCSV(await recruitsRes.text());
+      const rawRosters = this.parseCSV(await rostersRes.text());
       
       this.state.recruits = rawRecruits.map(r => this.normalizePlayerObj(r, true));
       
@@ -121,7 +104,9 @@ window.SimEngine = {
             school: player.school,
             conference: player.conference || 'NCAA',
             logo: this.getTeamLogo(player.school), 
-            roster: []
+            roster: [],
+            // Prevent Week 0 UI crashes by guaranteeing simData exists
+            simData: { teamOvr: 0, wins: 0, losses: 0, confWins: 0, confLosses: 0, rosterRef: [], winPct: '.000' }
           };
         } else if (player.conference && player.conference !== 'NCAA') {
           teamsMap[player.school].conference = player.conference;
@@ -130,14 +115,50 @@ window.SimEngine = {
       });
       
       this.state.teams = Object.values(teamsMap);
+      
+      if(this.state.teams.length === 0) throw new Error("No teams parsed from sheets.");
+
       this.filterActiveData();
       this.syncUI();
-      
+      await this.saveStateToDB();
       this.logNews(`Loaded ${this.state.teams.length} teams and ${this.state.activePlayers.length} players for ${this.state.year}.`);
     } catch(err) {
       console.error("Database Fetch Error:", err);
-      this.logNews(`Database Error: ${err.message}. Check public Google Sheets links.`);
+      this.logNews(`Failed to reach sheets. Generating Basketball GM Fallback Universe...`);
+      this.generateMockUniverse(); 
     }
+  },
+
+  // HARDWOOD EMPIRE / BBGM FALLBACK - Creates a fake universe if links break
+  generateMockUniverse() {
+    const confs = ['ACC', 'Big Ten', 'SEC', 'Pac-12', 'Big 12', 'Big East'];
+    const mockTeams = ['Duke', 'North Carolina', 'Kentucky', 'Kansas', 'Villanova', 'UCLA', 'Gonzaga', 'Michigan', 'Texas', 'Arizona', 'Baylor', 'Purdue', 'Virginia', 'Houston', 'UConn', 'Arkansas'];
+    this.state.teams = [];
+    this.state.activePlayers = [];
+    
+    mockTeams.forEach((school, i) => {
+      let conf = confs[i % confs.length];
+      let team = { 
+        school, conference: conf, logo: this.getTeamLogo(school), roster: [],
+        simData: { teamOvr: 0, wins: 0, losses: 0, confWins: 0, confLosses: 0, rosterRef: [], winPct: '.000' }
+      };
+      
+      for(let j=0; j<12; j++) {
+        let pos = ['PG', 'SG', 'SF', 'PF', 'C'][Math.floor(Math.random()*5)];
+        let cls = ['FR', 'SO', 'JR', 'SR'][Math.floor(Math.random()*4)];
+        let rating = Math.floor(Math.random()*25) + 70; // 70-95 rating
+        let p = {
+          id: `${school}_${j}`, name: `${school} Player ${j+1}`, school, conference: conf, 
+          pos, class: cls, rating, ht: "6'5", wt: "200", hometown: "USA", 
+          gameLog: [], accolades: [], stats: this.getZeroStats(), statsFull: this.getZeroStats(), statsConf: this.getZeroStats()
+        };
+        team.roster.push(p);
+        this.state.activePlayers.push(p);
+      }
+      this.state.teams.push(team);
+    });
+    this.syncUI();
+    this.saveStateToDB();
   },
 
   parseCSV(csvData) {
@@ -234,13 +255,13 @@ window.SimEngine = {
   initSeasonData() {
     this.state.teams.forEach(team => {
       let roster = this.state.activePlayers.filter(p => p.school === team.school);
-      roster.sort((a, b) => b.rating - a.rating);
+      roster.sort((a, b) => parseFloat(b.rating) - parseFloat(a.rating)); // Fortified parsing
 
-      const rawWeights = roster.map((p, idx) => Math.max(0.1, (p.rating - 55) * Math.pow(0.78, idx)));
+      const rawWeights = roster.map((p, idx) => Math.max(0.1, (parseFloat(p.rating) - 55) * Math.pow(0.78, idx)));
       const totalWeight = rawWeights.reduce((a, b) => a + b, 0) || 1;
 
       const top8 = roster.slice(0, 8);
-      const teamOvr = top8.reduce((sum, p) => sum + p.rating, 0) / Math.max(1, Math.min(8, top8.length));
+      const teamOvr = top8.reduce((sum, p) => sum + parseFloat(p.rating), 0) / Math.max(1, Math.min(8, top8.length));
       const winPct = Math.min(0.94, Math.max(0.06, 0.50 + (teamOvr - 78) * 0.038));
       
       team.expectedWinPct = winPct;
@@ -263,7 +284,7 @@ window.SimEngine = {
   buildBaseStatExpectations(player, mpg) {
     if (mpg <= 0.5) return this.getZeroStats();
     
-    const r = player.rating; const pos = player.pos;
+    const r = parseFloat(player.rating); const pos = player.pos;
     const isBig = pos.includes('C') || (pos.includes('F') && !pos.includes('G'));
     
     const usageScale = (mpg / 28) * (r / 78);
@@ -296,6 +317,10 @@ window.SimEngine = {
   },
 
   async simulateWeek() {
+    if (this.state.teams.length === 0) {
+      alert("No active teams detected. Please refresh or check data sources.");
+      return;
+    }
     if (this.state.simCompleted) {
       alert("Season already complete! Advance offseason to start a new year.");
       return;
@@ -472,9 +497,10 @@ window.SimEngine = {
     this.state.teams.forEach(team => {
       team.roster.forEach(p => {
         p.class = classProgression[p.class] || 'GRADUATED';
-        p.rating = Math.min(99, p.rating + Math.floor(Math.random() * 4)); 
+        p.rating = Math.min(99, parseFloat(p.rating) + Math.floor(Math.random() * 4)); 
       });
       team.roster = team.roster.filter(p => p.class !== 'GRADUATED');
+      team.simData = { teamOvr: 0, wins: 0, losses: 0, confWins: 0, confLosses: 0, rosterRef: team.roster, winPct: '.000' };
     });
 
     this.state.year += 1;
@@ -504,7 +530,7 @@ window.SimEngine = {
     const btn = document.getElementById('simWeekBtn');
     if (btn) {
       if (this.state.simCompleted) {
-        btn.innerText = `Calculate Awards`;
+        btn.innerText = `Season Complete`;
         btn.disabled = true;
       } else {
         btn.innerText = `Simulate Week ${this.state.week + 1}`;
