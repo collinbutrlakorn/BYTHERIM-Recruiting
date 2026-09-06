@@ -106,7 +106,7 @@
       background: var(--card-bg);
       border: 1px solid var(--border);
       border-radius: 12px;
-      padding: 2rem;
+      padding: 1.75rem;
       box-shadow: 0 8px 20px rgba(0, 0, 0, 0.2);
       display: flex;
       flex-direction: column;
@@ -143,14 +143,39 @@
       font-size: 0.95rem;
     }
 
+    /* Card Main Content Layout (Thumbnail + Details) */
+    .episode-body {
+      display: flex;
+      gap: 1.5rem;
+      align-items: flex-start;
+    }
+
+    .episode-thumb {
+      width: 140px;
+      height: 140px;
+      border-radius: 8px;
+      object-fit: cover;
+      border: 1px solid var(--border);
+      flex-shrink: 0;
+      background: var(--bg-color);
+    }
+
+    .episode-details {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      gap: 0.5rem;
+    }
+
     .episode-title {
       font-family: 'Oswald', sans-serif;
-      font-size: 1.8rem;
+      font-size: 1.7rem;
       font-weight: 700;
       color: var(--text-main);
-      margin: 0 0 0.5rem 0;
+      margin: 0;
       text-transform: uppercase;
       letter-spacing: 0.5px;
+      line-height: 1.25;
     }
 
     .episode-title a {
@@ -164,14 +189,14 @@
 
     .episode-desc {
       color: var(--text-muted);
-      font-size: 1.05rem;
-      line-height: 1.6;
+      font-size: 1rem;
+      line-height: 1.5;
       margin: 0;
     }
 
     /* Audio Player Component */
     .audio-player-wrapper {
-      margin-top: 0.5rem;
+      margin-top: 0.25rem;
       background: var(--bg-color);
       padding: 0.75rem;
       border-radius: 8px;
@@ -184,27 +209,72 @@
       outline: none;
     }
 
-    /* Card Footer Action Links */
-    .card-actions {
+    /* Episode Specific Platform Links */
+    .episode-action-bar {
       display: flex;
-      gap: 1rem;
+      flex-wrap: wrap;
+      gap: 0.75rem;
       align-items: center;
       padding-top: 0.5rem;
+      border-top: 1px solid var(--border);
     }
 
-    .read-more-btn {
-      color: var(--accent);
-      text-decoration: none;
+    .action-bar-label {
+      font-size: 0.85rem;
       font-weight: 700;
-      font-size: 0.95rem;
+      color: var(--text-muted);
       text-transform: uppercase;
       letter-spacing: 0.5px;
-      transition: opacity 0.2s ease;
+      margin-right: 0.25rem;
     }
 
-    .read-more-btn:hover {
-      opacity: 0.8;
-      text-decoration: underline;
+    .ep-link-btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.4rem;
+      padding: 0.4rem 0.85rem;
+      border-radius: 6px;
+      font-size: 0.85rem;
+      font-weight: 600;
+      text-decoration: none;
+      color: var(--text-main);
+      background: var(--bg-color);
+      border: 1px solid var(--border);
+      transition: all 0.2s ease;
+    }
+
+    .ep-link-btn:hover {
+      transform: translateY(-2px);
+      border-color: var(--accent);
+    }
+
+    .ep-link-btn.apple:hover {
+      background: #FA243C;
+      color: #ffffff;
+      border-color: #FA243C;
+    }
+
+    .ep-link-btn.spotify:hover {
+      background: #1DB954;
+      color: #000000;
+      border-color: #1DB954;
+    }
+
+    .ep-link-btn.substack:hover {
+      background: #FF6719;
+      color: #ffffff;
+      border-color: #FF6719;
+    }
+
+    /* Responsive adjustments */
+    @media (max-width: 650px) {
+      .episode-body {
+        flex-direction: column;
+      }
+      .episode-thumb {
+        width: 100%;
+        height: 200px;
+      }
     }
 
     /* Loading State */
@@ -377,21 +447,62 @@
       });
     }
 
-    // Direct Substack Podcast RSS Feed Integration
+    // Direct Substack Podcast RSS Feed & iTunes Lookup APIs
     const SUBSTACK_PODCAST_FEED = 'https://api.substack.com/feed/podcast/9314968.rss';
     const RSS2JSON_API = `https://api.rss2json.com/v1/api.json?rss_url=${encodeURIComponent(SUBSTACK_PODCAST_FEED)}`;
+    const APPLE_ITUNES_API = 'https://itunes.apple.com/lookup?id=6807326876&entity=podcastEpisode&limit=100';
+
+    // Helper: Clean title for matching
+    function cleanTitle(str) {
+      return (str || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+    }
+
+    // Helper: Extract Thumbnail Image URL from RSS Item
+    function getThumbnailUrl(item, feedImage) {
+      if (item.thumbnail && item.thumbnail.length > 5) return item.thumbnail;
+      
+      if (item.enclosure && item.enclosure.type && item.enclosure.type.startsWith('image')) {
+        return item.enclosure.link;
+      }
+
+      // Check if description has an <img> tag
+      if (item.description) {
+        const imgMatch = item.description.match(/<img[^>]+src="([^">]+)"/i);
+        if (imgMatch && imgMatch[1]) return imgMatch[1];
+      }
+
+      // Fallback to feed image or default logo
+      return feedImage || 'logo.png';
+    }
 
     async function loadPodcastEpisodes() {
       const episodesGrid = document.getElementById('episodesGrid');
 
       try {
-        const response = await fetch(RSS2JSON_API);
-        const data = await response.json();
+        // Fetch Substack RSS & Apple Podcasts Catalog in Parallel
+        const [rssRes, appleRes] = await Promise.allSettled([
+          fetch(RSS2JSON_API).then(r => r.json()),
+          fetch(APPLE_ITUNES_API).then(r => r.json())
+        ]);
 
-        if (data.status === 'ok' && data.items && data.items.length > 0) {
+        const rssData = rssRes.status === 'fulfilled' ? rssRes.value : null;
+        const appleData = appleRes.status === 'fulfilled' ? appleRes.value : null;
+
+        // Build Apple Episode Link Lookup Map by normalized title
+        const appleEpisodeMap = new Map();
+        if (appleData && appleData.results) {
+          appleData.results.forEach(ep => {
+            if (ep.kind === 'podcast-episode' && ep.trackName && ep.trackViewUrl) {
+              appleEpisodeMap.set(cleanTitle(ep.trackName), ep.trackViewUrl);
+            }
+          });
+        }
+
+        if (rssData && rssData.status === 'ok' && rssData.items && rssData.items.length > 0) {
           episodesGrid.innerHTML = ''; // Clear loading state
+          const feedImage = rssData.feed ? rssData.feed.image : null;
 
-          data.items.forEach((item) => {
+          rssData.items.forEach((item) => {
             const pubDate = new Date(item.pubDate).toLocaleDateString('en-US', {
               year: 'numeric',
               month: 'long',
@@ -402,10 +513,21 @@
             const tempDiv = document.createElement('div');
             tempDiv.innerHTML = item.description || item.content || '';
             const cleanText = tempDiv.textContent || tempDiv.innerText || '';
-            const truncatedDesc = cleanText.length > 280 ? cleanText.substring(0, 280) + '...' : cleanText;
+            const truncatedDesc = cleanText.length > 250 ? cleanText.substring(0, 250) + '...' : cleanText;
 
-            // Extract audio link from enclosure
+            // Extract Thumbnail & Audio
+            const thumbnailUrl = getThumbnailUrl(item, feedImage);
             const audioUrl = item.enclosure && item.enclosure.link ? item.enclosure.link : null;
+
+            // Resolve Individual Episode Links
+            const substackEpUrl = item.link;
+            
+            // Match Apple Podcast Episode URL or fallback to main show
+            const normalizedEpTitle = cleanTitle(item.title);
+            const appleEpUrl = appleEpisodeMap.get(normalizedEpTitle) || 'https://podcasts.apple.com/us/podcast/bytherim-podcast/id6807326876';
+
+            // Spotify individual episode search link & fallback show link
+            const spotifySearchUrl = `https://open.spotify.com/search/${encodeURIComponent(item.title)}`;
 
             const article = document.createElement('article');
             article.className = 'episode-card';
@@ -415,11 +537,16 @@
                 <span class="ep-badge">Podcast Episode</span>
                 <span class="ep-date">${pubDate}</span>
               </div>
-              <div>
-                <h2 class="episode-title">
-                  <a href="${item.link}" target="_blank" rel="noopener">${item.title}</a>
-                </h2>
-                <p class="episode-desc">${truncatedDesc}</p>
+
+              <div class="episode-body">
+                <img src="${thumbnailUrl}" alt="${item.title}" class="episode-thumb" onerror="this.src='logo.png';">
+                
+                <div class="episode-details">
+                  <h2 class="episode-title">
+                    <a href="${substackEpUrl}" target="_blank" rel="noopener">${item.title}</a>
+                  </h2>
+                  <p class="episode-desc">${truncatedDesc}</p>
+                </div>
               </div>
 
               ${audioUrl ? `
@@ -431,9 +558,22 @@
                 </div>
               ` : ''}
 
-              <div class="card-actions">
-                <a href="${item.link}" target="_blank" rel="noopener" class="read-more-btn">
-                  Listen & Read on Substack &rarr;
+              <div class="episode-action-bar">
+                <span class="action-bar-label">Listen On:</span>
+                
+                <a href="${substackEpUrl}" target="_blank" rel="noopener" class="ep-link-btn substack">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M22.539 8.242H1.46V5.406h21.08v2.836zM1.46 10.812V24L12 18.11 22.54 24V10.812H1.46zM22.539 0H1.46v2.836h21.08V0z"/></svg>
+                  <span>Substack</span>
+                </a>
+
+                <a href="${appleEpUrl}" target="_blank" rel="noopener" class="ep-link-btn apple">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M18.71 19.5c-.83 1.24-1.71 2.45-3.05 2.47-1.34.03-1.77-.79-3.29-.79-1.53 0-2 .77-3.27.82-1.31.05-2.3-1.32-3.14-2.53C4.25 17 2.94 12.45 4.7 9.39c.87-1.52 2.43-2.48 4.12-2.51 1.28-.02 2.5.87 3.29.87.78 0 2.26-1.07 3.81-.91.65.03 2.47.26 3.64 1.98-.09.06-2.17 1.28-2.15 3.81.03 3.02 2.65 4.03 2.68 4.04-.03.07-.42 1.44-1.38 2.83M15.97 6.09c.66-.8 1.11-1.92.99-3.04-.96.04-2.12.64-2.8 1.44-.61.71-1.14 1.86-1 2.97 1.08.08 2.16-.57 2.81-1.37z"/></svg>
+                  <span>Apple</span>
+                </a>
+
+                <a href="${spotifySearchUrl}" target="_blank" rel="noopener" class="ep-link-btn spotify">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M12 0C5.376 0 0 5.376 0 12s5.376 12 12 12 12-5.376 12-12S18.624 0 12 0zm5.521 17.341c-.218.358-.684.474-1.041.256-2.857-1.746-6.456-2.141-10.697-1.173-.404.093-.811-.162-.904-.566-.093-.404.162-.811.566-.904 4.644-1.061 8.624-.613 11.82 1.346.357.218.473.684.256 1.041zm1.472-3.276c-.274.446-.86.588-1.306.314-3.27-2.009-8.254-2.593-12.121-1.419-.506.153-1.04-.135-1.193-.64-.153-.506.135-1.04.64-1.193 4.417-1.341 9.907-.69 13.666 1.623.446.274.588.86.314 1.306zm.131-3.419C15.225 8.35 8.8 8.134 5.12 9.252c-.624.19-1.285-.164-1.474-.788-.19-.625.163-1.285.788-1.475 4.234-1.285 11.319-1.033 15.91 1.693.56.332.748 1.056.417 1.616-.333.56-1.057.749-1.617.417z"/></svg>
+                  <span>Spotify</span>
                 </a>
               </div>
             `;
@@ -449,7 +589,7 @@
           <div class="episode-card">
             <h3>Unable to load live feed</h3>
             <p class="episode-desc">Check out the latest podcast episodes directly on Substack.</p>
-            <a href="https://collindunks.substack.com" target="_blank" rel="noopener" class="read-more-btn">
+            <a href="https://collindunks.substack.com" target="_blank" rel="noopener" class="ep-link-btn substack">
               Visit Substack &rarr;
             </a>
           </div>
