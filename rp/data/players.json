@@ -1,0 +1,30 @@
+{
+  "entity_id": "string_unique_identifier",
+  "name": "string",
+  "category": "string_or_enum",
+  "metadata": {
+    "version": "1.0",
+    "created_at": "ISO_8601_timestamp"
+  },
+  "base_attributes": {
+    "primary_stat_a": 0,
+    "primary_stat_b": 0,
+    "consistency_rating": 0.0
+  },
+  "dynamic_state": {
+    "current_health_or_stamina": 100,
+    "fatigue_modifier": 1.0,
+    "accumulated_stats": {}
+  },
+  "progression_curves": {
+    "growth_rate": "linear | exponential | custom_array",
+    "modifiers": []
+  },
+  "event_triggers": [
+    {
+      "trigger_condition": "string_eval_or_enum",
+      "effect_type": "attribute_delta | state_change",
+      "value": 0
+    }
+  ]
+}
