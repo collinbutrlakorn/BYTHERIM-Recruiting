@@ -28,13 +28,21 @@
 
   <div class="sim-layout">
     <aside class="sidebar-panel">
-      <div class="panel-card">
+      <div class="panel-card mb-1">
         <span class="status-badge" id="currentPhaseDisplay">Preseason</span>
         <h2 class="season-title"><span id="currentYearDisplay">2028-29</span> SEASON</h2>
         <p class="panel-desc">Simulate the active collegiate universe, team standings, and individual box scores week-by-week.</p>
-        <button class="sim-btn" id="simWeekBtn" onclick="SimEngine.simulateWeek()">Simulate Week 1</button>
-        <button class="sim-btn sim-btn-secondary" onclick="SimEngine.runOffseason()">Advance Offseason</button>
+        <button class="sim-btn w-100 mb-1" id="simWeekBtn">Simulate Week 1</button>
+        <button class="sim-btn sim-btn-secondary w-100" id="advanceOffseasonBtn">Advance Offseason</button>
       </div>
+      
+      <div class="panel-card mb-1">
+        <h3 class="section-title">Save Files</h3>
+        <button class="sim-btn sim-btn-secondary w-100 mb-1" id="exportSaveBtn">Export Save JSON</button>
+        <input type="file" id="importSaveInput" style="display:none;" accept=".json">
+        <button class="sim-btn sim-btn-secondary w-100" onclick="document.getElementById('importSaveInput').click()">Import Save</button>
+      </div>
+
       <div class="panel-card">
         <h3 class="section-title">Storylines</h3>
         <div id="newsFeed" class="news-feed-container">
@@ -45,17 +53,16 @@
 
     <main class="panel-card">
       <div class="tab-bar">
-        <button class="tab-btn active" onclick="switchTab('dashTab', this)">Dashboard</button>
-        <button class="tab-btn" onclick="switchTab('statsTab', this)">Stat Leaders</button>
-        <button class="tab-btn" onclick="switchTab('standingsTab', this)">Standings</button>
-        <button class="tab-btn" onclick="switchTab('awardsTab', this)">Awards</button>
+        <button class="tab-btn active" data-tab="dashTab">Dashboard</button>
+        <button class="tab-btn" data-tab="statsTab">Stat Leaders</button>
+        <button class="tab-btn" data-tab="standingsTab">Standings</button>
+        <button class="tab-btn" data-tab="awardsTab">Awards</button>
       </div>
 
-      <!-- Dashboard Tab -->
       <div id="dashTab" class="tab-content active">
         <div class="flex-between mb-1">
           <h3>AP Top 10 Teams</h3>
-          <button class="outline-btn" onclick="switchTab('standingsTab', document.querySelectorAll('.tab-btn')[2])">View Standings &rarr;</button>
+          <button class="outline-btn" data-tab="standingsTab">View Standings &rarr;</button>
         </div>
         <div class="top-teams-container" id="dashTopTeams">
           <p class="sub-text">Simulate games to generate rankings.</p>
@@ -71,7 +78,6 @@
         </div>
       </div>
 
-      <!-- Stat Leaders Tab -->
       <div id="statsTab" class="tab-content">
         <div class="flex-between wrap-gap mb-1">
           <h3>League Leaders</h3>
@@ -109,14 +115,12 @@
         </div>
       </div>
 
-      <!-- Standings Tab -->
       <div id="standingsTab" class="tab-content">
         <div id="standingsContainer">
           <p class="empty-table-msg">Simulate games to view standings.</p>
         </div>
       </div>
 
-      <!-- Awards Tab -->
       <div id="awardsTab" class="tab-content">
         <div class="flex-between wrap-gap mb-1-5">
           <h3>National & Conference Awards</h3>
@@ -152,10 +156,9 @@
     </main>
   </div>
   
-  <!-- Team Modal -->
   <div id="teamModal" class="modal-overlay">
     <div class="modal-content">
-      <button class="close-btn" onclick="SimEngine.closeTeamModal()">&times;</button>
+      <button class="close-btn modal-close">&times;</button>
       <div class="team-header">
         <img id="modalTeamLogo" src="" alt="Team Logo" class="team-logo">
         <div class="team-title-block">
@@ -184,10 +187,9 @@
     </div>
   </div>
 
-  <!-- Player Modal -->
   <div id="playerModal" class="modal-overlay">
     <div class="modal-content">
-      <button class="close-btn" onclick="SimEngine.closePlayerModal()">&times;</button>
+      <button class="close-btn modal-close">&times;</button>
       <div class="team-header">
         <img id="modalPlayerLogo" src="" alt="School Logo" class="team-logo">
         <div class="team-title-block">
@@ -218,18 +220,13 @@
     </div>
   </div>
 
-  <!-- Scripts -->
   <script src="https://unpkg.com/dexie/dist/dexie.js"></script>
-  <script src="db.js"></script>
-  <script src="engine.js"></script>
+  <script src="js/db.js"></script>
+  <script src="js/engine.js"></script>
+  <script src="js/ui.js"></script>
   <script>
-    function switchTab(tabId, btn) {
-      document.querySelectorAll('.tab-content').forEach(el => el.classList.remove('active'));
-      document.querySelectorAll('.tab-btn').forEach(el => el.classList.remove('active'));
-      document.getElementById(tabId).classList.add('active');
-      btn.classList.add('active');
-    }
     document.addEventListener('DOMContentLoaded', () => {
+      // SimEngine and UIController are safely initialized here.
       SimEngine.init();
     });
   </script>
