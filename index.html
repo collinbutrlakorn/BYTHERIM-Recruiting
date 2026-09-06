@@ -39,17 +39,38 @@
       padding: 0.5rem;
     }
 
-    /* Carousel Card Anchor Styling */
+    /* Carousel Card & Thumbnail Styling */
     a.card.slide {
       text-decoration: none;
       color: inherit;
       display: flex;
       flex-direction: column;
       cursor: pointer;
+      padding: 1.25rem;
     }
 
     a.card.slide:hover h3 {
       color: var(--accent);
+    }
+
+    .slide .card-img-wrapper {
+      width: 100%;
+      aspect-ratio: 16 / 9;
+      border-radius: 6px;
+      overflow: hidden;
+      margin-bottom: 0.85rem;
+      background-color: var(--border);
+    }
+
+    .slide .card-img-wrapper img {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      transition: transform 0.3s ease;
+    }
+
+    a.card.slide:hover .card-img-wrapper img {
+      transform: scale(1.05);
     }
   </style>
 </head>
@@ -126,7 +147,8 @@
   </div>
 
   <div class="carousel-track" id="carouselTrack">
-    </div>
+    <!-- Dynamic uploads rendered via JavaScript below -->
+  </div>
 </main>
 
 <section class="container social-section">
@@ -194,62 +216,54 @@
 </footer>
 
 <script>
-  // Centralized Content Uploads (Add new videos, articles, substack posts, or podcasts here)
+  // Add new uploads to this array. Newer entries put at top will appear first in carousel.
   const latestUploads = [
     {
       category: "SUBSTACK",
-      title: "Modern Offense & Court Geometry",
-      description: "Breaking down dynamic pick-and-roll spacing and how ball-handler mechanics alter defense rotations.",
+      title: "BYTHERIM Substack",
+      description: "Read the latest written analysis, in-depth film breakdowns, and newsletter posts.",
+      thumbnail: "logo.png",
       url: "https://collindunks.substack.com/",
       external: true
     },
     {
       category: "YOUTUBE",
-      title: "Unbiased Film Breakdown & Tape Analysis",
-      description: "Detailed video breakdown of high-efficiency wing prospects and offensive translation.",
+      title: "BYTHERIM YouTube Channel",
+      description: "Watch video essays, prospect film breakdowns, and basketball commentary.",
+      thumbnail: "logo.png",
       url: "https://youtube.com/@bytherim",
       external: true
     },
     {
-      category: "PODCAST",
-      title: "Episode 01: The Draft Hub",
-      description: "Analyzing elite high school prospects making their mark on national scouting radars.",
-      url: "podcast.html",
-      external: false
-    },
-    {
       category: "SIMULATION",
-      title: "RP High School Recruiting Live",
-      description: "Track class ratings, offer sheets, and commit announcements in our custom RP universe.",
+      title: "BYTHERIM RP Universe",
+      description: "Explore high school recruiting rankings, prospect sheets, and sim updates.",
+      thumbnail: "logo.png",
       url: "./rp/",
-      external: false
-    },
-    {
-      category: "DRAFT",
-      title: "Mid-Major Sleepers to Watch",
-      description: "Highlighting under-the-radar wing prospects with high translation efficiency.",
-      url: "draft.html",
-      external: false
-    },
-    {
-      category: "NBA",
-      title: "The Unbiased Eye Test",
-      description: "Why raw context and tape breakdown beat relying strictly on surface-level box scores.",
-      url: "nba.html",
       external: false
     }
   ];
 
-  // Render Carousel Uploads
+  // Render Carousel Uploads with Thumbnails
   const carouselTrack = document.getElementById('carouselTrack');
 
   function renderCarousel() {
     if (!carouselTrack) return;
 
+    if (latestUploads.length === 0) {
+      carouselTrack.innerHTML = `<p style="color: var(--text-muted); padding: 1rem;">No recent uploads added yet.</p>`;
+      return;
+    }
+
     carouselTrack.innerHTML = latestUploads.map(item => `
       <a href="${item.url}" 
          class="card slide" 
          ${item.external ? 'target="_blank" rel="noopener"' : ''}>
+        ${item.thumbnail ? `
+          <div class="card-img-wrapper">
+            <img src="${item.thumbnail}" alt="${item.title}" loading="lazy">
+          </div>
+        ` : ''}
         <div class="card-tag">${item.category}</div>
         <h3>${item.title}</h3>
         <p>${item.description}</p>
