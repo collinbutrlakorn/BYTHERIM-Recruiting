@@ -15,6 +15,8 @@ window.SimEngine = {
     scopeFilter: 'full',
     selectedAwardConf: 'ACC'
   },
+// In engine.js when populating team rosters:
+team.roster = allPlayers.filter(p => String(p.teamId) === String(team.id));
   
   async init() {
     await this.initDatabase();
@@ -1171,4 +1173,25 @@ window.SimEngine = {
     item.innerText = msg;
     feed.prepend(item);
   }
+// Inside SimEngine.simulateGame(homeTeam, awayTeam)
+function simulateGame(homeTeam, awayTeam) {
+  // Guard check: Ensure both teams have playable rosters
+  if (!homeTeam.roster || homeTeam.roster.length === 0) {
+    console.warn(`Skipping game: ${homeTeam.name} has no players.`);
+    return;
+  }
+  if (!awayTeam.roster || awayTeam.roster.length === 0) {
+    console.warn(`Skipping game: ${awayTeam.name} has no players.`);
+    return;
+  }
+
+  // Safe rotation selection (prevents reading undefined player attributes)
+  const getActivePlayer = (roster) => {
+    const player = roster[Math.floor(Math.random() * roster.length)];
+    return player || { name: "Bench Fill", pts: 0, reb: 0, ast: 0 };
+  };
+
+  // Continue simulation math...
+}
+
 };
