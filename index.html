@@ -62,6 +62,9 @@
       overflow: hidden;
       margin-bottom: 0.85rem;
       background-color: var(--border);
+      display: flex;
+      align-items: center;
+      justify-content: center;
     }
 
     .slide .card-img-wrapper img {
@@ -227,20 +230,47 @@
 <script>
   // Live Feed Sources
   const SUBSTACK_FEED = 'https://collindunks.substack.com/feed';
-  // Replace with your YouTube Channel ID (found in YouTube Studio settings)
+  
+  // YouTube Channel Feed for @BYTHERIM / @BYTHERIM/videos
+  // Replace UC_YOUR_YOUTUBE_CHANNEL_ID with your YouTube Channel ID (found in YouTube Studio settings)
   const YOUTUBE_CHANNEL_ID = 'UC_YOUR_YOUTUBE_CHANNEL_ID'; 
   const YOUTUBE_FEED = `https://www.youtube.com/feeds/videos.xml?channel_id=${YOUTUBE_CHANNEL_ID}`;
 
   const RSS_CONVERTER = 'https://api.rss2json.com/v1/api.json?rss_url=';
+  const DEFAULT_THUMBNAIL = 'favicon.png';
 
-  // Helper to extract image thumbnails from HTML descriptions if missing from feed metadata
-  function extractThumbnail(item) {
+  // Helper to extract image thumbnails or podcast cover art
+  function extractThumbnail(item, feedCoverArt) {
+    // 1. Check if podcast episode/item explicitly provides a thumbnail
     if (item.thumbnail && item.thumbnail !== '') return item.thumbnail;
-    if (item.enclosure && item.enclosure.link) return item.enclosure.link;
-    
+
+    // 2. Check for image enclosure (common in podcast audio feeds)
+    if (item.enclosure && item.enclosure.link && /\.(jpg|jpeg|png|webp|gif)/i.test(item.enclosure.link)) {
+      return item.enclosure.link;
+    }
+
+    // 3. Fallback to channel/podcast series artwork if available
+    if (feedCoverArt && feedCoverArt !== '') return feedCoverArt;
+
+    // 4. Extract first <img> tag from description/content
     const htmlContent = item.content || item.description || '';
     const imgMatch = htmlContent.match(/<img[^>]+src=["']([^"']+)["']/i);
-    return imgMatch ? imgMatch[1] : 'logo.png';
+    if (imgMatch && imgMatch[1]) return imgMatch[1];
+
+    // 5. Default fallback
+    return DEFAULT_THUMBNAIL;
+  }
+
+  // Helper to construct YouTube thumbnails (Shorts & Long Form)
+  function getYouTubeThumbnail(item) {
+    if (item.thumbnail && item.thumbnail !== '') return item.thumbnail;
+
+    const videoIdMatch = item.link.match(/(?:v=|\/shorts\/|\/embed\/)([a-zA-Z0-9_-]{11})/);
+    if (videoIdMatch && videoIdMatch[1]) {
+      return `https://i.ytimg.com/vi/${videoIdMatch[1]}/hqdefault.jpg`;
+    }
+
+    return DEFAULT_THUMBNAIL;
   }
 
   // Helper to strip HTML tags for card descriptions
@@ -254,57 +284,64 @@
   async function fetchLiveFeed(rssUrl) {
     try {
       const response = await fetch(RSS_CONVERTER + encodeURIComponent(rssUrl));
-      if (!response.ok) return [];
+      if (!response.ok) return { feed: {}, items: [] };
       const data = await response.json();
-      return data.status === 'ok' ? data.items : [];
+      return data.status === 'ok' ? { feed: data.feed || {}, items: data.items || [] } : { feed: {}, items: [] };
     } catch (err) {
       console.warn('Feed fetch failed for:', rssUrl, err);
-      return [];
+      return { feed: {}, items: [] };
     }
   }
 
   async function loadAllCarouselContent() {
     const carouselTrack = document.getElementById('carouselTrack');
 
-    // Fetch Substack and YouTube live feeds concurrently
-    const [substackItems, youtubeItems] = await Promise.all([
+    // Fetch Substack & YouTube live feeds concurrently
+    const [substackData, youtubeData] = await Promise.all([
       fetchLiveFeed(SUBSTACK_FEED),
       fetchLiveFeed(YOUTUBE_FEED)
     ]);
 
     // Format Substack items (Articles, Podcasts, Notes)
-    const formattedSubstack = substackItems.map(item => {
-      const isPodcast = item.link.includes('/p/') && (item.enclosure?.type?.includes('audio') || false);
+    const formattedSubstack = substackData.items.map(item => {
+      const isPodcast = item.link.includes('/p/') && (
+        (item.enclosure && item.enclosure.type && item.enclosure.type.includes('audio')) ||
+        (item.categories && item.categories.includes('podcast'))
+      );
+
+      const podcastArt = substackData.feed ? (substackData.feed.image || substackData.feed.thumbnail) : null;
+      const thumbnail = extractThumbnail(item, isPodcast ? podcastArt : null);
+
       return {
         category: isPodcast ? 'PODCAST' : 'SUBSTACK',
         title: item.title,
         description: cleanDescription(item.description),
-        thumbnail: extractThumbnail(item),
+        thumbnail: thumbnail,
         url: item.link,
         date: new Date(item.pubDate)
       };
     });
 
-    // Format YouTube items (Long form and Shorts)
-    const formattedYouTube = youtubeItems.map(item => {
+    // Format YouTube items (Videos & Shorts from @BYTHERIM/videos)
+    const formattedYouTube = youtubeData.items.map(item => {
       const isShort = item.link.includes('/shorts/');
       return {
-        category: isShort ? 'YOUTUBE SHORT' : 'YOUTUBE',
+        category: isShort ? 'YOUTUBE SHORT' : 'YOUTUBE VIDEO',
         title: item.title,
         description: cleanDescription(item.description),
-        thumbnail: extractThumbnail(item),
+        thumbnail: getYouTubeThumbnail(item),
         url: item.link,
         date: new Date(item.pubDate)
       };
     });
 
-    // Custom internal uploads (e.g. RP platform updates or static site additions)
+    // Internal uploads (e.g. BYTHERIM RP Sim Database)
     const internalItems = [
       {
         category: 'SIMULATION',
         title: 'BYTHERIM RP Universe Live Database',
         description: 'Explore high school recruiting rankings, prospect sheets, and live sim updates.',
-        thumbnail: 'logo.png',
+        thumbnail: DEFAULT_THUMBNAIL,
         url: './rp/',
         date: new Date()
       }
@@ -326,7 +363,10 @@
          target="_blank" 
          rel="noopener">
         <div class="card-img-wrapper">
-          <img src="${item.thumbnail}" alt="${item.title}" loading="lazy" onerror="this.src='logo.png';">
+          <img src="${item.thumbnail}" 
+               alt="${item.title}" 
+               loading="lazy" 
+               onerror="this.onerror=null; this.src='${DEFAULT_THUMBNAIL}';">
         </div>
         <div class="card-tag">${item.category}</div>
         <h3>${item.title}</h3>
