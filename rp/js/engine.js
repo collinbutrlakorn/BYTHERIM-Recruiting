@@ -15,9 +15,7 @@ window.SimEngine = {
     scopeFilter: 'full',
     selectedAwardConf: 'ACC'
   },
-// In engine.js when populating team rosters:
-team.roster = allPlayers.filter(p => String(p.teamId) === String(team.id));
-  
+
   async init() {
     await this.initDatabase();
   },
@@ -107,7 +105,6 @@ team.roster = allPlayers.filter(p => String(p.teamId) === String(team.id));
             conference: player.conference || 'NCAA',
             logo: this.getTeamLogo(player.school), 
             roster: [],
-            // Prevent Week 0 UI crashes by guaranteeing simData exists
             simData: { teamOvr: 0, wins: 0, losses: 0, confWins: 0, confLosses: 0, rosterRef: [], winPct: '.000' }
           };
         } else if (player.conference && player.conference !== 'NCAA') {
@@ -131,7 +128,6 @@ team.roster = allPlayers.filter(p => String(p.teamId) === String(team.id));
     }
   },
 
-  // HARDWOOD EMPIRE / BBGM FALLBACK - Creates a fake universe if links break
   generateMockUniverse() {
     const confs = ['ACC', 'Big Ten', 'SEC', 'Pac-12', 'Big 12', 'Big East'];
     const mockTeams = ['Duke', 'North Carolina', 'Kentucky', 'Kansas', 'Villanova', 'UCLA', 'Gonzaga', 'Michigan', 'Texas', 'Arizona', 'Baylor', 'Purdue', 'Virginia', 'Houston', 'UConn', 'Arkansas'];
@@ -148,7 +144,7 @@ team.roster = allPlayers.filter(p => String(p.teamId) === String(team.id));
       for(let j=0; j<12; j++) {
         let pos = ['PG', 'SG', 'SF', 'PF', 'C'][Math.floor(Math.random()*5)];
         let cls = ['FR', 'SO', 'JR', 'SR'][Math.floor(Math.random()*4)];
-        let rating = Math.floor(Math.random()*25) + 70; // 70-95 rating
+        let rating = Math.floor(Math.random()*25) + 70;
         let p = {
           id: `${school}_${j}`, name: `${school} Player ${j+1}`, school, conference: conf, 
           pos, class: cls, rating, ht: "6'5", wt: "200", hometown: "USA", 
@@ -257,7 +253,7 @@ team.roster = allPlayers.filter(p => String(p.teamId) === String(team.id));
   initSeasonData() {
     this.state.teams.forEach(team => {
       let roster = this.state.activePlayers.filter(p => p.school === team.school);
-      roster.sort((a, b) => parseFloat(b.rating) - parseFloat(a.rating)); // Fortified parsing
+      roster.sort((a, b) => parseFloat(b.rating) - parseFloat(a.rating));
 
       const rawWeights = roster.map((p, idx) => Math.max(0.1, (parseFloat(p.rating) - 55) * Math.pow(0.78, idx)));
       const totalWeight = rawWeights.reduce((a, b) => a + b, 0) || 1;
@@ -363,38 +359,38 @@ team.roster = allPlayers.filter(p => String(p.teamId) === String(team.id));
   },
 
   generateSingleGameBox(player, isConf, week, gameNum) {
-     const exp = player.expectedStats;
-     const gameMin = Math.round(parseFloat(exp.mpg) * (0.8 + Math.random()*0.4));
+     const exp = player.expectedStats || this.getZeroStats();
+     const gameMin = Math.round(parseFloat(exp.mpg || 0) * (0.8 + Math.random()*0.4));
      
      if (gameMin <= 0) {
        return { week, isConf, min:0, pts:0, reb:0, ast:0, stl:0, blk:0, tov:0, pf:0, fgm:0, fga:0, twoPm:0, twoPa:0, threePm:0, threePa:0, ftm:0, fta:0 };
      }
 
      const variance = () => 0.5 + (Math.random() * 1.0); 
-     const scale = gameMin / Math.max(1, parseFloat(exp.mpg));
+     const scale = gameMin / Math.max(1, parseFloat(exp.mpg || 1));
      
-     let expected3PA = parseFloat(exp.fta) > 0 ? (parseFloat(exp.ppg) - (parseFloat(exp.fta)*parseFloat(exp.ftPct))) * parseFloat(exp.threePar) / 3 : 0;
-     let expected2PA = parseFloat(exp.fta) > 0 ? ((parseFloat(exp.ppg) - (parseFloat(exp.fta)*parseFloat(exp.ftPct))) - (expected3PA*3)) / 2 : 0;
+     let expected3PA = parseFloat(exp.fta || 0) > 0 ? (parseFloat(exp.ppg || 0) - (parseFloat(exp.fta || 0)*parseFloat(exp.ftPct || 0))) * parseFloat(exp.threePar || 0) / 3 : 0;
+     let expected2PA = parseFloat(exp.fta || 0) > 0 ? ((parseFloat(exp.ppg || 0) - (parseFloat(exp.fta || 0)*parseFloat(exp.ftPct || 0))) - (expected3PA*3)) / 2 : 0;
      if(expected2PA < 0) expected2PA = 1; if(expected3PA < 0) expected3PA = 1;
 
      const threePa = Math.round(expected3PA * scale * variance());
      let threePm = 0;
-     for(let i=0; i<threePa; i++) if (Math.random() < parseFloat(exp.threePPct)) threePm++;
+     for(let i=0; i<threePa; i++) if (Math.random() < parseFloat(exp.threePPct || 0)) threePm++;
      
      const twoPa = Math.round(expected2PA * scale * variance());
      let twoPm = 0;
-     for(let i=0; i<twoPa; i++) if (Math.random() < parseFloat(exp.twoPPct)) twoPm++;
+     for(let i=0; i<twoPa; i++) if (Math.random() < parseFloat(exp.twoPPct || 0)) twoPm++;
      
-     const fta = Math.round(parseFloat(exp.fta) * scale * variance());
+     const fta = Math.round(parseFloat(exp.fta || 0) * scale * variance());
      let ftm = 0;
-     for(let i=0; i<fta; i++) if (Math.random() < parseFloat(exp.ftPct)) ftm++;
+     for(let i=0; i<fta; i++) if (Math.random() < parseFloat(exp.ftPct || 0)) ftm++;
      
-     const reb = Math.round(parseFloat(exp.rpg) * scale * variance());
-     const ast = Math.round(parseFloat(exp.apg) * scale * variance());
-     const stl = Math.round(parseFloat(exp.stl) * (0.3 + Math.random()*1.4));
-     const blk = Math.round(parseFloat(exp.blk) * (0.3 + Math.random()*1.4));
-     const tov = Math.round(parseFloat(exp.tov) * scale * variance());
-     const pf = Math.min(5, Math.round(parseFloat(exp.pf) * scale * variance()));
+     const reb = Math.round(parseFloat(exp.rpg || 0) * scale * variance());
+     const ast = Math.round(parseFloat(exp.apg || 0) * scale * variance());
+     const stl = Math.round(parseFloat(exp.stl || 0) * (0.3 + Math.random()*1.4));
+     const blk = Math.round(parseFloat(exp.blk || 0) * (0.3 + Math.random()*1.4));
+     const tov = Math.round(parseFloat(exp.tov || 0) * scale * variance());
+     const pf = Math.min(5, Math.round(parseFloat(exp.pf || 0) * scale * variance()));
 
      return {
        week, isConf, min: gameMin,
@@ -408,6 +404,8 @@ team.roster = allPlayers.filter(p => String(p.teamId) === String(team.id));
   recalculateAverages(player) {
     if (!player.gameLog || player.gameLog.length === 0) return;
     
+    const exp = player.expectedStats || {};
+
     const calc = (logs) => {
        if (logs.length === 0) return this.getZeroStats();
        let s = { min:0, pts:0, reb:0, ast:0, stl:0, blk:0, tov:0, pf:0, fgm:0, fga:0, twoPm:0, twoPa:0, threePm:0, threePa:0, ftm:0, fta:0 };
@@ -419,6 +417,13 @@ team.roster = allPlayers.filter(p => String(p.teamId) === String(team.id));
        
        let mpg = s.min/g;
        let usg = ((s.fga + 0.44 * s.fta + s.tov) / Math.max(1, mpg)) * (40/Math.max(1, mpg)) * 100;
+
+       const bpmNum = parseFloat(exp.bpm) || 0;
+       const obpmNum = parseFloat(exp.obpm) || 0;
+       const dbpmNum = parseFloat(exp.dbpm) || 0;
+       const ortgNum = parseFloat(exp.ortg) || 100;
+       const drtgNum = parseFloat(exp.drtg) || 100;
+       const tsPctNum = parseFloat(exp.tsPct) || 0;
        
        return {
           mpg: t1(s.min), ppg: t1(s.pts), rpg: t1(s.reb), apg: t1(s.ast),
@@ -427,21 +432,21 @@ team.roster = allPlayers.filter(p => String(p.teamId) === String(team.id));
           twoPm: t1(s.twoPm), twoPa: t1(s.twoPa), twoPPct: t3(s.twoPm, s.twoPa),
           threePm: t1(s.threePm), threePa: t1(s.threePa), threePPct: t3(s.threePm, s.threePa),
           ftm: t1(s.ftm), fta: t1(s.fta), ftPct: t3(s.ftm, s.fta),
-          bpm: (player.expectedStats.bpm || 0).toFixed(1), 
-          obpm: (player.expectedStats.obpm || 0).toFixed(1), 
-          dbpm: (player.expectedStats.dbpm || 0).toFixed(1),
+          bpm: bpmNum.toFixed(1), 
+          obpm: obpmNum.toFixed(1), 
+          dbpm: dbpmNum.toFixed(1),
           tsPct: (2*(s.fga + 0.44*s.fta)) > 0 ? t3(s.pts, 2*(s.fga + 0.44*s.fta)) : '.000',
-          rTsPct: ((player.expectedStats.tsPct || 0)*100 - 53.5).toFixed(1), 
+          rTsPct: (tsPctNum * 100 - 53.5).toFixed(1), 
           eFgPct: s.fga > 0 ? t3(s.fgm + 0.5*s.threePm, s.fga) : '.000',
-          orebPct: player.expectedStats.orebPct, drebPct: player.expectedStats.drebPct, trbPct: player.expectedStats.trbPct,
+          orebPct: exp.orebPct || '0.0%', drebPct: exp.drebPct || '0.0%', trbPct: exp.trbPct || '0.0%',
           astPct: mpg>0 ? ((s.ast/g)/mpg * 60).toFixed(1) + '%' : '0.0%',
           tovPct: (s.fga + 0.44*s.fta + s.tov) > 0 ? ((s.tov/(s.fga + 0.44*s.fta + s.tov))*100).toFixed(1) + '%' : '0.0%',
           blkPct: mpg>0 ? ((s.blk/g)/mpg * 40).toFixed(1) + '%' : '0.0%',
           usg: Math.min(45.0, Math.max(5.0, usg)).toFixed(1) + '%', 
           ftr: t3(s.fta, s.fga), threePar: t3(s.threePa, s.fga),
-          ortg: (player.expectedStats.ortg || 100).toFixed(1), 
-          drtg: (player.expectedStats.drtg || 100).toFixed(1), 
-          netRtg: ((player.expectedStats.ortg||100) - (player.expectedStats.drtg||100)).toFixed(1)
+          ortg: ortgNum.toFixed(1), 
+          drtg: drtgNum.toFixed(1), 
+          netRtg: (ortgNum - drtgNum).toFixed(1)
        };
     };
 
@@ -1172,26 +1177,21 @@ team.roster = allPlayers.filter(p => String(p.teamId) === String(team.id));
     item.className = 'news-item';
     item.innerText = msg;
     feed.prepend(item);
-  }
-// Inside SimEngine.simulateGame(homeTeam, awayTeam)
-function simulateGame(homeTeam, awayTeam) {
-  // Guard check: Ensure both teams have playable rosters
-  if (!homeTeam.roster || homeTeam.roster.length === 0) {
-    console.warn(`Skipping game: ${homeTeam.name} has no players.`);
-    return;
-  }
-  if (!awayTeam.roster || awayTeam.roster.length === 0) {
-    console.warn(`Skipping game: ${awayTeam.name} has no players.`);
-    return;
-  }
+  },
 
-  // Safe rotation selection (prevents reading undefined player attributes)
-  const getActivePlayer = (roster) => {
-    const player = roster[Math.floor(Math.random() * roster.length)];
-    return player || { name: "Bench Fill", pts: 0, reb: 0, ast: 0 };
-  };
+  simulateGame(homeTeam, awayTeam) {
+    if (!homeTeam || !homeTeam.roster || homeTeam.roster.length === 0) {
+      console.warn(`Skipping game: Home team has no players.`);
+      return;
+    }
+    if (!awayTeam || !awayTeam.roster || awayTeam.roster.length === 0) {
+      console.warn(`Skipping game: Away team has no players.`);
+      return;
+    }
 
-  // Continue simulation math...
-}
-
+    const getActivePlayer = (roster) => {
+      const player = roster[Math.floor(Math.random() * roster.length)];
+      return player || { name: "Bench Fill", pts: 0, reb: 0, ast: 0 };
+    };
+  }
 };
