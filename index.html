@@ -38,6 +38,19 @@
       background: var(--bg-color, #0e1117);
       padding: 0.5rem;
     }
+
+    /* Carousel Card Anchor Styling */
+    a.card.slide {
+      text-decoration: none;
+      color: inherit;
+      display: flex;
+      flex-direction: column;
+      cursor: pointer;
+    }
+
+    a.card.slide:hover h3 {
+      color: var(--accent);
+    }
   </style>
 </head>
 <body>
@@ -113,32 +126,7 @@
   </div>
 
   <div class="carousel-track" id="carouselTrack">
-    <article class="card slide">
-      <div class="card-tag">ANALYSIS</div>
-      <h3>Modern Offense & Court Geometry</h3>
-      <p>Breaking down dynamic pick-and-roll spacing and how ball-handler mechanics alter defense rotations.</p>
-    </article>
-    <article class="card slide">
-      <div class="card-tag">PODCAST</div>
-      <h3>Episode 01: The Draft Hub</h3>
-      <p>Analyzing elite high school prospects making their mark on national scouting radars.</p>
-    </article>
-    <article class="card slide">
-      <div class="card-tag">SIMULATION</div>
-      <h3>RP High School Recruiting Live</h3>
-      <p>Track class ratings, offer sheets, and commit announcements in our custom RP universe.</p>
-    </article>
-    <article class="card slide">
-      <div class="card-tag">SCOUTING</div>
-      <h3>Mid-Major Sleepers to Watch</h3>
-      <p>Highlighting under-the-radar wing prospects with high translation efficiency.</p>
-    </article>
-    <article class="card slide">
-      <div class="card-tag">CULTURE</div>
-      <h3>The Unbiased Eye Test</h3>
-      <p>Why raw context and tape breakdown beat relying strictly on surface-level box scores.</p>
-    </article>
-  </div>
+    </div>
 </main>
 
 <section class="container social-section">
@@ -170,7 +158,6 @@
       </a>
     </div>
   </div>
-
 
   </div>
 </section>
@@ -207,6 +194,71 @@
 </footer>
 
 <script>
+  // Centralized Content Uploads (Add new videos, articles, substack posts, or podcasts here)
+  const latestUploads = [
+    {
+      category: "SUBSTACK",
+      title: "Modern Offense & Court Geometry",
+      description: "Breaking down dynamic pick-and-roll spacing and how ball-handler mechanics alter defense rotations.",
+      url: "https://collindunks.substack.com/",
+      external: true
+    },
+    {
+      category: "YOUTUBE",
+      title: "Unbiased Film Breakdown & Tape Analysis",
+      description: "Detailed video breakdown of high-efficiency wing prospects and offensive translation.",
+      url: "https://youtube.com/@bytherim",
+      external: true
+    },
+    {
+      category: "PODCAST",
+      title: "Episode 01: The Draft Hub",
+      description: "Analyzing elite high school prospects making their mark on national scouting radars.",
+      url: "podcast.html",
+      external: false
+    },
+    {
+      category: "SIMULATION",
+      title: "RP High School Recruiting Live",
+      description: "Track class ratings, offer sheets, and commit announcements in our custom RP universe.",
+      url: "./rp/",
+      external: false
+    },
+    {
+      category: "DRAFT",
+      title: "Mid-Major Sleepers to Watch",
+      description: "Highlighting under-the-radar wing prospects with high translation efficiency.",
+      url: "draft.html",
+      external: false
+    },
+    {
+      category: "NBA",
+      title: "The Unbiased Eye Test",
+      description: "Why raw context and tape breakdown beat relying strictly on surface-level box scores.",
+      url: "nba.html",
+      external: false
+    }
+  ];
+
+  // Render Carousel Uploads
+  const carouselTrack = document.getElementById('carouselTrack');
+
+  function renderCarousel() {
+    if (!carouselTrack) return;
+
+    carouselTrack.innerHTML = latestUploads.map(item => `
+      <a href="${item.url}" 
+         class="card slide" 
+         ${item.external ? 'target="_blank" rel="noopener"' : ''}>
+        <div class="card-tag">${item.category}</div>
+        <h3>${item.title}</h3>
+        <p>${item.description}</p>
+      </a>
+    `).join('');
+  }
+
+  renderCarousel();
+
   // Carousel Navigation Controls
   const track = document.getElementById('carouselTrack');
   const nextBtn = document.getElementById('nextBtn');
@@ -234,13 +286,13 @@
 
   // Live Card Search Filter
   const searchInput = document.getElementById('cardSearch');
-  const cards = document.querySelectorAll('.card, .media-card');
 
   if (searchInput) {
     searchInput.addEventListener('input', (e) => {
       const query = e.target.value.toLowerCase().trim();
+      const allCards = document.querySelectorAll('.card, .media-card');
 
-      cards.forEach(card => {
+      allCards.forEach(card => {
         const text = card.textContent.toLowerCase();
         card.style.display = text.includes(query) ? '' : 'none';
       });
