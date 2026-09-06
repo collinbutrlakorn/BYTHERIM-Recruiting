@@ -16,8 +16,72 @@ window.SimEngine = {
     selectedAwardConf: 'ACC'
   },
   
-  init() {
-    this.fetchData();
+  async init() {
+    await this.initDatabase();
+  },
+
+  /**
+   * IndexedDB Initialization & Syncing
+   */
+  async initDatabase() {
+    try {
+      if (typeof db !== 'undefined' && db.leagueState) {
+        const savedState = await db.leagueState.get(1);
+        
+        if (savedState) {
+          this.logNews("Loading save state from IndexedDB...");
+          this.state.year = savedState.currentYear || 2028;
+          this.state.week = savedState.currentWeek || 0;
+          this.state.phase = savedState.currentPhase || 'Preseason';
+          this.state.simCompleted = savedState.simCompleted || false;
+
+          const savedTeams = await db.teams.toArray();
+          const savedPlayers = await db.players.toArray();
+
+          if (savedTeams.length > 0 && savedPlayers.length > 0) {
+            this.state.teams = savedTeams;
+            this.state.activePlayers = savedPlayers;
+            this.syncUI();
+            this.logNews(`Loaded Season ${this.state.year} (${this.state.teams.length} teams, ${this.state.activePlayers.length} players).`);
+            return;
+          }
+        }
+      }
+      
+      // Fallback or Initial Sheet Ingestion
+      this.logNews("No active save file found. Initializing universe from Google Sheets...");
+      await this.fetchData();
+      await this.saveStateToDB();
+    } catch (err) {
+      console.error("Database Init Error:", err);
+      this.logNews("Error initializing database. Loading fresh sheet data...");
+      await this.fetchData();
+    }
+  },
+
+  async saveStateToDB() {
+    if (typeof db === 'undefined' || !db.leagueState) return;
+    
+    try {
+      await db.transaction('rw', db.leagueState, db.teams, db.players, async () => {
+        await db.leagueState.put({
+          id: 1,
+          currentYear: this.state.year,
+          currentWeek: this.state.week,
+          currentPhase: this.state.phase,
+          simCompleted: this.state.simCompleted
+        });
+
+        await db.teams.clear();
+        await db.teams.bulkAdd(this.state.teams);
+
+        await db.players.clear();
+        await db.players.bulkAdd(this.state.activePlayers);
+      });
+      console.log("State synced to IndexedDB.");
+    } catch (err) {
+      console.error("Failed to save state to IndexedDB:", err);
+    }
   },
 
   getTeamLogo(schoolName) {
@@ -67,10 +131,9 @@ window.SimEngine = {
       
       this.state.teams = Object.values(teamsMap);
       this.filterActiveData();
+      this.syncUI();
       
-      document.getElementById('currentYearDisplay').innerText = `${this.state.year}-${(this.state.year + 1).toString().slice(2)}`;
       this.logNews(`Loaded ${this.state.teams.length} teams and ${this.state.activePlayers.length} players for ${this.state.year}.`);
-      
     } catch(err) {
       console.error("Database Fetch Error:", err);
       this.logNews(`Database Error: ${err.message}. Check public Google Sheets links.`);
@@ -112,6 +175,7 @@ window.SimEngine = {
     const school = getVal(['school', 'team', 'committedto', 'college'], 'Free Agent');
     
     return {
+      id: getVal(['id', 'playerid'], `${getVal(['name', 'player'], 'unknown')}_${school}_${Math.random().toString(36).substr(2, 5)}`),
       name: getVal(['name', 'player', 'fullname'], 'Unknown Player'),
       school: school,
       conference: getVal(['conf', 'conference', 'league'], 'NCAA'),
@@ -125,6 +189,7 @@ window.SimEngine = {
       isRecruit: isRecruit,
       recClassYear: parseInt(getVal(['classyear', 'recclass'], this.state.year)),
       gameLog: [],
+      accolades: [],
       stats: this.getZeroStats(),       
       statsFull: this.getZeroStats(),   
       statsConf: this.getZeroStats()    
@@ -175,7 +240,7 @@ window.SimEngine = {
       const totalWeight = rawWeights.reduce((a, b) => a + b, 0) || 1;
 
       const top8 = roster.slice(0, 8);
-      const teamOvr = top8.reduce((sum, p) => sum + p.rating, 0) / Math.min(8, top8.length);
+      const teamOvr = top8.reduce((sum, p) => sum + p.rating, 0) / Math.max(1, Math.min(8, top8.length));
       const winPct = Math.min(0.94, Math.max(0.06, 0.50 + (teamOvr - 78) * 0.038));
       
       team.expectedWinPct = winPct;
@@ -230,7 +295,7 @@ window.SimEngine = {
     };
   },
 
-  simulateWeek() {
+  async simulateWeek() {
     if (this.state.simCompleted) {
       alert("Season already complete! Advance offseason to start a new year.");
       return;
@@ -243,7 +308,6 @@ window.SimEngine = {
     this.state.week++;
     let isConf = this.state.week > 6;
 
-    // Sim 2 games per week
     this.state.teams.forEach(team => {
        for(let i=0; i<2; i++) {
          let win = Math.random() < team.expectedWinPct;
@@ -261,17 +325,14 @@ window.SimEngine = {
        this.recalculateAverages(p);
     });
 
-    document.getElementById('currentPhaseDisplay').innerText = `Week ${this.state.week}`;
-    
     if (this.state.week >= this.state.maxWeeks) {
        this.finalizeSeason();
     } else {
-       document.getElementById('simWeekBtn').innerText = `Simulate Week ${this.state.week + 1}`;
-       this.updateDashboard();
-       this.sortAndRenderStatsTable();
-       this.updateStandingsTab();
+       this.syncUI();
        this.logNews(`Week ${this.state.week} simulation complete.`);
     }
+
+    await this.saveStateToDB();
   },
 
   generateSingleGameBox(player, isConf, week, gameNum) {
@@ -283,7 +344,7 @@ window.SimEngine = {
      }
 
      const variance = () => 0.5 + (Math.random() * 1.0); 
-     const scale = gameMin / parseFloat(exp.mpg);
+     const scale = gameMin / Math.max(1, parseFloat(exp.mpg));
      
      let expected3PA = parseFloat(exp.fta) > 0 ? (parseFloat(exp.ppg) - (parseFloat(exp.fta)*parseFloat(exp.ftPct))) * parseFloat(exp.threePar) / 3 : 0;
      let expected2PA = parseFloat(exp.fta) > 0 ? ((parseFloat(exp.ppg) - (parseFloat(exp.fta)*parseFloat(exp.ftPct))) - (expected3PA*3)) / 2 : 0;
@@ -329,8 +390,8 @@ window.SimEngine = {
        const t1 = v => (v/g).toFixed(1);
        const t3 = (m,a) => a > 0 ? (m/a).toFixed(3).replace(/^0+/,'') : '.000';
        
-       let mpg = s.min/g; let ppg = s.pts/g;
-       let usg = ((s.fga + 0.44 * s.fta + s.tov) / Math.max(1, mpg)) * (40/Math.max(1, mpg)) * 100; // rough estimation
+       let mpg = s.min/g;
+       let usg = ((s.fga + 0.44 * s.fta + s.tov) / Math.max(1, mpg)) * (40/Math.max(1, mpg)) * 100;
        
        return {
           mpg: t1(s.min), ppg: t1(s.pts), rpg: t1(s.reb), apg: t1(s.ast),
@@ -364,7 +425,6 @@ window.SimEngine = {
 
   finalizeSeason() {
     this.state.phase = 'Regular Season Final';
-    document.getElementById('currentPhaseDisplay').innerText = 'Regular Season Final';
     
     this.state.teams.forEach(t => {
        t.simData.winPct = (t.simData.wins / Math.max(1, t.simData.wins + t.simData.losses)).toFixed(3).replace(/^0+/, '');
@@ -393,15 +453,34 @@ window.SimEngine = {
     });
     
     this.state.simCompleted = true;
-    document.getElementById('simWeekBtn').innerText = `Calculate Awards`;
-    document.getElementById('simWeekBtn').disabled = true;
+    this.syncUI();
+    this.logNews("Regular season complete. National and Conference awards calculated.");
+  },
+
+  syncUI() {
+    const yrElem = document.getElementById('currentYearDisplay');
+    if (yrElem) yrElem.innerText = `${this.state.year}-${(this.state.year + 1).toString().slice(2)}`;
+
+    const phaseElem = document.getElementById('currentPhaseDisplay');
+    if (phaseElem) {
+      phaseElem.innerText = this.state.simCompleted ? 'Regular Season Final' : (this.state.week === 0 ? 'Preseason' : `Week ${this.state.week}`);
+    }
+
+    const btn = document.getElementById('simWeekBtn');
+    if (btn) {
+      if (this.state.simCompleted) {
+        btn.innerText = `Calculate Awards`;
+        btn.disabled = true;
+      } else {
+        btn.innerText = `Simulate Week ${this.state.week + 1}`;
+        btn.disabled = false;
+      }
+    }
 
     this.updateDashboard();
     this.sortAndRenderStatsTable();
     this.updateStandingsTab();
     this.updateAwardsTab();
-    
-    this.logNews("Regular season complete. National and Conference awards awarded.");
   },
 
   setConfFilter(val) {
@@ -434,7 +513,9 @@ window.SimEngine = {
   },
 
   sortAndRenderStatsTable() {
-    if (this.state.week === 0) return;
+    const statsBody = document.getElementById('statsBody');
+    const statsHeader = document.getElementById('statsHeader');
+    if (!statsBody || !statsHeader || this.state.week === 0) return;
     
     let col = this.state.sortCol;
     let dir = this.state.sortDir === 'desc' ? -1 : 1;
@@ -484,7 +565,7 @@ window.SimEngine = {
       theadHtml += `<th class="${cls}" onclick="SimEngine.handleSort('${h.id}')">${h.label}${arrow}</th>`;
     });
     theadHtml += `</tr>`;
-    document.getElementById('statsHeader').innerHTML = theadHtml;
+    statsHeader.innerHTML = theadHtml;
 
     let tbodyHtml = '';
     if (pool.length === 0) {
@@ -493,9 +574,10 @@ window.SimEngine = {
       pool.forEach((p) => {
         tbodyHtml += `<tr>`;
         const safeName = p.name.replace(/'/g, "\\'");
+        const safeSchool = p.school.replace(/'/g, "\\'");
         currentHeaders.forEach(h => {
           if (h.id === 'name') tbodyHtml += `<td class="clickable-player" onclick="SimEngine.openPlayerModal('${safeName}')">${p.name}</td>`;
-          else if (h.id === 'school') tbodyHtml += `<td class="clickable-school" onclick="SimEngine.openTeamModal('${p.school}')">${p.school}</td>`;
+          else if (h.id === 'school') tbodyHtml += `<td class="clickable-school" onclick="SimEngine.openTeamModal('${safeSchool}')">${p.school}</td>`;
           else if (h.id === 'pos') tbodyHtml += `<td>${p.pos}</td>`;
           else tbodyHtml += `<td>${p.stats ? p.stats[h.id] : '-'}</td>`;
         });
@@ -503,15 +585,19 @@ window.SimEngine = {
       });
     }
     
-    document.getElementById('statsBody').innerHTML = tbodyHtml;
+    statsBody.innerHTML = tbodyHtml;
   },
 
   updateDashboard() {
+    const dashTopTeams = document.getElementById('dashTopTeams');
+    if (!dashTopTeams) return;
+
     let topTeamsHtml = '';
     for (let i = 0; i < 10; i++) {
       if (this.state.teams[i] && this.state.week > 0) {
+        const safeSchool = this.state.teams[i].school.replace(/'/g, "\\'");
         topTeamsHtml += `
-          <div class="team-badge clickable-school" onclick="SimEngine.openTeamModal('${this.state.teams[i].school}')">
+          <div class="team-badge clickable-school" onclick="SimEngine.openTeamModal('${safeSchool}')">
             <span class="team-rank">#${i+1}</span>
             <img src="${this.getTeamLogo(this.state.teams[i].school)}" style="width:20px; height:20px; object-fit:contain;">
             ${this.state.teams[i].school}
@@ -519,7 +605,7 @@ window.SimEngine = {
         `;
       }
     }
-    document.getElementById('dashTopTeams').innerHTML = topTeamsHtml || `<p style="color:#7d8296;">Simulate games to generate rankings.</p>`;
+    dashTopTeams.innerHTML = topTeamsHtml || `<p style="color:#7d8296;">Simulate games to generate rankings.</p>`;
     
     if(this.state.week > 0) {
       this.populateDashList('dashPts', 'ppg');
@@ -531,6 +617,9 @@ window.SimEngine = {
   },
 
   populateDashList(elementId, statKey) {
+    const el = document.getElementById(elementId);
+    if (!el) return;
+
     let sorted = [...this.state.activePlayers].sort((a,b) => parseFloat(b.stats[statKey]) - parseFloat(a.stats[statKey]));
     let html = '';
     for (let i = 0; i < 5; i++) {
@@ -542,11 +631,12 @@ window.SimEngine = {
         </div>`;
       }
     }
-    document.getElementById(elementId).innerHTML = html;
+    el.innerHTML = html;
   },
 
   updateStandingsTab() {
-    if (this.state.week === 0) return;
+    const standingsContainer = document.getElementById('standingsContainer');
+    if (!standingsContainer || this.state.week === 0) return;
 
     let apTop25 = this.state.teams.slice(0, 25);
     let apHtml = `
@@ -563,11 +653,12 @@ window.SimEngine = {
     
     apTop25.forEach((t, idx) => {
       let isHidden = idx >= 10 ? 'class="ap-extra-row" style="display:none;"' : '';
+      const safeSchool = t.school.replace(/'/g, "\\'");
       apHtml += `
         <tr ${isHidden}>
           <td style="font-weight:800; color:var(--brand-color);">#${idx + 1}</td>
           <td>
-            <div style="display:flex; align-items:center; gap:8px;" class="clickable-school" onclick="SimEngine.openTeamModal('${t.school}')">
+            <div style="display:flex; align-items:center; gap:8px;" class="clickable-school" onclick="SimEngine.openTeamModal('${safeSchool}')">
               <img src="${this.getTeamLogo(t.school)}" style="width:20px; height:20px; object-fit:contain;">
               <span style="font-weight:700; color:#fff;">${t.school}</span>
             </div>
@@ -625,12 +716,13 @@ window.SimEngine = {
         let isApRanked = t.apRank !== null && t.apRank <= 25;
         let rowStyle = isApRanked ? 'style="background: rgba(255, 102, 0, 0.14); border-left: 3px solid var(--brand-color);"' : '';
         let apTag = isApRanked ? ` <span style="color:var(--brand-color); font-size:0.85rem; font-weight:800;">(#${t.apRank})</span>` : '';
+        const safeSchool = t.school.replace(/'/g, "\\'");
 
         confsHtml += `
           <tr ${isHidden} ${rowStyle}>
             <td style="font-weight:700; color:#a1a5b8;">${idx+1}</td>
             <td>
-              <div style="display:flex; align-items:center; gap:6px;" class="clickable-school" onclick="SimEngine.openTeamModal('${t.school}')">
+              <div style="display:flex; align-items:center; gap:6px;" class="clickable-school" onclick="SimEngine.openTeamModal('${safeSchool}')">
                 <img src="${this.getTeamLogo(t.school)}" style="width:18px; height:18px; object-fit:contain;">
                 <span style="font-weight:700; color:#fff;">${t.school}</span>${apTag}
               </div>
@@ -651,7 +743,7 @@ window.SimEngine = {
     });
 
     confsHtml += `</div>`;
-    document.getElementById('standingsContainer').innerHTML = apHtml + confsHtml;
+    standingsContainer.innerHTML = apHtml + confsHtml;
   },
 
   toggleApTop25(btn) {
@@ -669,10 +761,16 @@ window.SimEngine = {
   },
 
   updateAwardsTab() {
+    const natGrid = document.getElementById('nationalAwardsGrid');
+    const aaContainer = document.getElementById('allAmericanContainer');
+    const confContainer = document.getElementById('confAwardsContainer');
+
+    if (!natGrid || !aaContainer || !confContainer) return;
+
     if (!this.state.simCompleted) {
-      document.getElementById('nationalAwardsGrid').innerHTML = `<p style="color: #7d8296;">Complete the season to calculate National Award winners.</p>`;
-      document.getElementById('allAmericanContainer').innerHTML = `<p style="color: #7d8296;">Complete the season to view All-American teams.</p>`;
-      document.getElementById('confAwardsContainer').innerHTML = `<p style="color: #7d8296;">Complete the season to view conference award winners.</p>`;
+      natGrid.innerHTML = `<p style="color: #7d8296;">Complete the season to calculate National Award winners.</p>`;
+      aaContainer.innerHTML = `<p style="color: #7d8296;">Complete the season to view All-American teams.</p>`;
+      confContainer.innerHTML = `<p style="color: #7d8296;">Complete the season to view conference award winners.</p>`;
       return;
     }
 
@@ -693,7 +791,6 @@ window.SimEngine = {
     const malone = [...players].filter(isPF).sort((a,b) => b.awardScore - a.awardScore)[0] || npoy;
     const abdulJabbar = [...players].filter(isC).sort((a,b) => b.awardScore - a.awardScore)[0] || npoy;
 
-    // Award tags dynamically populated for modal display
     if(npoy && !npoy.accolades.includes("National POY")) npoy.accolades.push("National POY");
     if(dpoy && !dpoy.accolades.includes("National DPOY")) dpoy.accolades.push("National DPOY");
 
@@ -727,7 +824,7 @@ window.SimEngine = {
         </div>
       `;
     });
-    document.getElementById('nationalAwardsGrid').innerHTML = natHtml;
+    natGrid.innerHTML = natHtml;
 
     const sortedAll = [...players].sort((a,b) => b.awardScore - a.awardScore);
     const aa1 = sortedAll.slice(0, 5);
@@ -767,7 +864,7 @@ window.SimEngine = {
       `;
     };
 
-    document.getElementById('allAmericanContainer').innerHTML = 
+    aaContainer.innerHTML = 
       renderAaCard("1st Team All-American", aa1) +
       renderAaCard("2nd Team All-American", aa2) +
       renderAaCard("3rd Team All-American", aa3);
@@ -777,16 +874,20 @@ window.SimEngine = {
 
   renderConferenceAwards(confName) {
     this.state.selectedAwardConf = confName;
-    document.getElementById('confAwardsTitle').innerText = `${confName} Conference Honors`;
+    const titleEl = document.getElementById('confAwardsTitle');
+    if (titleEl) titleEl.innerText = `${confName} Conference Honors`;
     
+    const confContainer = document.getElementById('confAwardsContainer');
+    if (!confContainer) return;
+
     if (!this.state.simCompleted) {
-      document.getElementById('confAwardsContainer').innerHTML = `<p style="color: #7d8296;">Complete the season to view conference awards.</p>`;
+      confContainer.innerHTML = `<p style="color: #7d8296;">Complete the season to view conference awards.</p>`;
       return;
     }
 
     const confPlayers = this.state.activePlayers.filter(p => (p.conference || '').toLowerCase() === confName.toLowerCase());
     if (confPlayers.length === 0) {
-      document.getElementById('confAwardsContainer').innerHTML = `<p style="color: #7d8296;">No players found for conference: ${confName}</p>`;
+      confContainer.innerHTML = `<p style="color: #7d8296;">No players found for conference: ${confName}</p>`;
       return;
     }
 
@@ -866,7 +967,7 @@ window.SimEngine = {
       </div>
     `;
 
-    document.getElementById('confAwardsContainer').innerHTML = html;
+    confContainer.innerHTML = html;
   },
 
   renderConfTeamTable(title, playerList) {
@@ -906,16 +1007,18 @@ window.SimEngine = {
     if (!team) return;
 
     let rank = team.apRank;
-    document.getElementById('modalTeamLogo').src = this.getTeamLogo(team.school);
+    const logoEl = document.getElementById('modalTeamLogo');
+    if (logoEl) logoEl.src = this.getTeamLogo(team.school);
+    
     document.getElementById('modalTeamName').innerText = team.school;
     document.getElementById('modalTeamYear').innerText = `${this.state.year}-${(this.state.year+1).toString().slice(2)}`;
     
+    const rankEl = document.getElementById('modalTeamRank');
     if (this.state.week > 0) {
       if (this.state.simCompleted && rank && rank <= 25) {
-        document.getElementById('modalTeamRank').style.display = 'block';
-        document.getElementById('modalTeamRank').innerText = `#${rank}`;
+        if (rankEl) { rankEl.style.display = 'block'; rankEl.innerText = `#${rank}`; }
       } else {
-        document.getElementById('modalTeamRank').style.display = 'none';
+        if (rankEl) rankEl.style.display = 'none';
       }
 
       document.getElementById('modalTeamRecord').innerText = `${team.simData.wins}-${team.simData.losses}`;
@@ -925,7 +1028,7 @@ window.SimEngine = {
       document.getElementById('modalTeamPPG').innerText = teamPpg.toFixed(1);
       document.getElementById('modalOppPPG').innerText = (teamPpg + (team.simData.losses - team.simData.wins) * 0.4).toFixed(1);
     } else {
-      document.getElementById('modalTeamRank').style.display = 'none';
+      if (rankEl) rankEl.style.display = 'none';
       document.getElementById('modalTeamRecord').innerText = "0-0";
       document.getElementById('modalConfRecord').innerText = "0-0";
       document.getElementById('modalTeamPPG').innerText = "0.0";
@@ -960,14 +1063,17 @@ window.SimEngine = {
   },
 
   closeTeamModal() {
-    document.getElementById('teamModal').classList.remove('active');
+    const modal = document.getElementById('teamModal');
+    if (modal) modal.classList.remove('active');
   },
 
   openPlayerModal(playerName) {
     let player = this.state.activePlayers.find(p => p.name === playerName);
     if (!player) return;
 
-    document.getElementById('modalPlayerLogo').src = this.getTeamLogo(player.school);
+    const logoEl = document.getElementById('modalPlayerLogo');
+    if (logoEl) logoEl.src = this.getTeamLogo(player.school);
+
     document.getElementById('modalPlayerName').innerText = player.name;
     document.getElementById('modalPlayerBio').innerText = `${player.school} | ${player.pos} | ${player.class} | ${player.ht} | ${player.wt} | ${player.hometown}`;
     
@@ -1009,10 +1115,11 @@ window.SimEngine = {
   },
 
   closePlayerModal() {
-    document.getElementById('playerModal').classList.remove('active');
+    const modal = document.getElementById('playerModal');
+    if (modal) modal.classList.remove('active');
   },
 
-  runOffseason() {
+  async runOffseason() {
     if (this.state.phase === 'Preseason') {
       alert("Simulate the regular season first before advancing to the offseason.");
       return;
@@ -1037,25 +1144,24 @@ window.SimEngine = {
     this.state.phase = 'Preseason';
     this.state.simCompleted = false;
     
-    document.getElementById('currentYearDisplay').innerText = `${this.state.year}-${(this.state.year+1).toString().slice(2)}`;
-    document.getElementById('currentPhaseDisplay').innerText = 'Preseason';
-    
-    let btn = document.getElementById('simWeekBtn');
-    btn.innerText = `Simulate Week 1`;
-    btn.disabled = false;
-    
     this.filterActiveData();
-    this.logNews(`Advanced to ${this.state.year} Offseason. Graduated seniors cleared; incoming recruits added.`);
+    this.syncUI();
     
-    document.getElementById('statsBody').innerHTML = `<tr><td colspan="25" style="text-align: center; color: #7d8296;">Simulate games to view leaderboards.</td></tr>`;
-    document.getElementById('standingsContainer').innerHTML = `<p style="text-align: center; color: #7d8296;">Simulate games to view standings.</p>`;
-    this.updateAwardsTab();
+    const sb = document.getElementById('statsBody');
+    if (sb) sb.innerHTML = `<tr><td colspan="25" style="text-align: center; color: #7d8296;">Simulate games to view leaderboards.</td></tr>`;
+    
+    const sc = document.getElementById('standingsContainer');
+    if (sc) sc.innerHTML = `<p style="text-align: center; color: #7d8296;">Simulate games to view standings.</p>`;
+    
+    this.logNews(`Advanced to ${this.state.year} Offseason. Graduated seniors cleared; incoming recruits added.`);
+    await this.saveStateToDB();
   },
 
   logNews(msg) {
-    const feed = document.getElementById('newsFeed');
+    const feed = document.getElementById('newsFeed') || document.getElementById('storylines-feed');
+    if (!feed) return;
     const item = document.createElement('div');
-    item.style.cssText = `padding: 10px 14px; background: #111118; border-left: 3px solid var(--brand-color); font-size: 0.95rem; margin-bottom: 0.5rem; animation: fadeIn 0.5s;`;
+    item.style.cssText = `padding: 10px 14px; background: #111118; border-left: 3px solid var(--brand-color, #ff6600); font-size: 0.95rem; margin-bottom: 0.5rem; animation: fadeIn 0.5s;`;
     item.innerText = msg;
     feed.prepend(item);
   }
