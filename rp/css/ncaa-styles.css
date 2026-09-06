@@ -201,7 +201,6 @@ tbody tr:hover {
   background: var(--bg-card-hover);
 }
 
-/* Monospace alignment for raw numerical stats */
 td {
   padding: 8px 12px;
   color: #d1d5db;
@@ -216,13 +215,11 @@ td:last-child, th:last-child {
   padding-right: 16px;
 }
 
-/* Numeric alignment: Right align statistics */
 td:not(:first-child):not(:nth-child(2)):not(:nth-child(3)),
 th:not(:first-child):not(:nth-child(2)):not(:nth-child(3)) {
   text-align: right;
 }
 
-/* Clickable Entities */
 .clickable-player {
   color: #fff;
   font-weight: 600;
@@ -386,3 +383,11 @@ th:not(:first-child):not(:nth-child(2)):not(:nth-child(3)) {
 .modal-close:hover {
   color: #fff;
 }
+
+/* --- UTILITY CLASSES --- */
+.mt-1 { margin-top: 1rem; }
+.mt-2 { margin-top: 2rem; }
+.mb-1 { margin-bottom: 1rem; }
+.mb-1-5 { margin-bottom: 1.5rem; }
+.w-100 { width: 100%; }
+.flex-between { display: flex; justify-content: space-between; align-items: center; }
