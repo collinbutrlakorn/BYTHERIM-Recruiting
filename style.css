@@ -180,6 +180,7 @@ h1, h2, h3, .section-title, .hero h1, .card h3 {
 }
 
 .hero h1 {
+  color: #ffffff;
   font-size: 3.5rem;
   letter-spacing: 1px;
   margin: 0.5rem 0 1rem 0;
@@ -187,7 +188,7 @@ h1, h2, h3, .section-title, .hero h1, .card h3 {
 }
 
 .hero p {
-  color: var(--text-muted);
+  color: rgba(255, 255, 255, 0.85);
   font-size: 1.2rem;
   margin-bottom: 1.8rem;
 }
@@ -593,6 +594,7 @@ h1, h2, h3, .section-title, .hero h1, .card h3 {
     gap: 2rem;
   }
 }
+
 /* Automatically switch colors when the device is set to Light Mode */
 @media (prefers-color-scheme: light) {
   :root {
@@ -604,6 +606,7 @@ h1, h2, h3, .section-title, .hero h1, .card h3 {
     --border: #cbd5e1;
   }
 }
+
 .search-box {
   margin-bottom: 2rem;
   width: 100%;
@@ -625,6 +628,7 @@ h1, h2, h3, .section-title, .hero h1, .card h3 {
   outline: none;
   border-color: var(--accent);
 }
+
 /* About Page Specific Helper Styles */
 .about-methodology {
   margin-top: 3.5rem;
@@ -636,6 +640,7 @@ h1, h2, h3, .section-title, .hero h1, .card h3 {
   line-height: 1.6;
   padding: 1.25rem;
 }
+
 /* Optimized Donation Card Container */
 .donate-card {
   background: var(--card-bg);
@@ -718,6 +723,7 @@ h1, h2, h3, .section-title, .hero h1, .card h3 {
 .donate-btn:hover .btn-icon {
   transform: scale(1.15) rotate(-5deg);
 }
+
 /* Responsive Image Defaults */
 img {
   max-width: 100%;
@@ -745,10 +751,12 @@ img {
 .card:hover .card-img-wrapper img {
   transform: scale(1.04);
 }
+
 .nav-links a.active {
   color: var(--accent);
   border-bottom: 2px solid var(--accent);
 }
+
 /* Split Hero Layout (Text Left, Graphic Right) */
 .hero {
   display: grid;
@@ -809,12 +817,19 @@ img {
   z-index: 1;
 }
 
-/* Optional: Adds subtle drop shadow directly to text to ensure readability over brighter graphics */
+/* Ensures high contrast and readability across light/dark OS modes */
 .hero-banner .hero-content h1,
-.hero-banner .hero-content p {
-  text-shadow: 0 2px 10px rgba(0, 0, 0, 0.7);
+.hero-banner .hero-content p,
+.hero h1,
+.hero p {
+  color: #ffffff !important;
+  text-shadow: 0 2px 10px rgba(0, 0, 0, 0.8);
 }
 
+.hero-banner .hero-content p,
+.hero p {
+  color: rgba(255, 255, 255, 0.9) !important;
+}
 
 .hero-banner .hero-content {
   position: relative;
@@ -842,6 +857,7 @@ img {
     background: rgba(15, 15, 18, 0.85); /* Darkens banner background on mobile screens */
   }
 }
+
 /* RP Card Header Layout */
 .rp-card-header {
   display: flex;
