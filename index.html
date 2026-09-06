@@ -39,7 +39,7 @@
       padding: 0.5rem;
     }
 
-    /* Carousel Card & Thumbnail Styling */
+    /* Carousel Card & Dynamic Thumbnail Styling */
     a.card.slide {
       text-decoration: none;
       color: inherit;
@@ -47,6 +47,8 @@
       flex-direction: column;
       cursor: pointer;
       padding: 1.25rem;
+      min-width: 300px;
+      max-width: 320px;
     }
 
     a.card.slide:hover h3 {
@@ -71,6 +73,13 @@
 
     a.card.slide:hover .card-img-wrapper img {
       transform: scale(1.05);
+    }
+
+    .card-meta-date {
+      font-size: 0.75rem;
+      color: var(--text-muted);
+      margin-top: auto;
+      padding-top: 0.75rem;
     }
   </style>
 </head>
@@ -147,7 +156,7 @@
   </div>
 
   <div class="carousel-track" id="carouselTrack">
-    <!-- Dynamic uploads rendered via JavaScript below -->
+    <div style="color: var(--text-muted); padding: 1.5rem;">Loading latest uploads...</div>
   </div>
 </main>
 
@@ -216,62 +225,118 @@
 </footer>
 
 <script>
-  // Add new uploads to this array. Newer entries put at top will appear first in carousel.
-  const latestUploads = [
-    {
-      category: "SUBSTACK",
-      title: "BYTHERIM Substack",
-      description: "Read the latest written analysis, in-depth film breakdowns, and newsletter posts.",
-      thumbnail: "logo.png",
-      url: "https://collindunks.substack.com/",
-      external: true
-    },
-    {
-      category: "YOUTUBE",
-      title: "BYTHERIM YouTube Channel",
-      description: "Watch video essays, prospect film breakdowns, and basketball commentary.",
-      thumbnail: "logo.png",
-      url: "https://youtube.com/@bytherim",
-      external: true
-    },
-    {
-      category: "SIMULATION",
-      title: "BYTHERIM RP Universe",
-      description: "Explore high school recruiting rankings, prospect sheets, and sim updates.",
-      thumbnail: "logo.png",
-      url: "./rp/",
-      external: false
+  // Live Feed Sources
+  const SUBSTACK_FEED = 'https://collindunks.substack.com/feed';
+  // Replace with your YouTube Channel ID (found in YouTube Studio settings)
+  const YOUTUBE_CHANNEL_ID = 'UC_YOUR_YOUTUBE_CHANNEL_ID'; 
+  const YOUTUBE_FEED = `https://www.youtube.com/feeds/videos.xml?channel_id=${YOUTUBE_CHANNEL_ID}`;
+
+  const RSS_CONVERTER = 'https://api.rss2json.com/v1/api.json?rss_url=';
+
+  // Helper to extract image thumbnails from HTML descriptions if missing from feed metadata
+  function extractThumbnail(item) {
+    if (item.thumbnail && item.thumbnail !== '') return item.thumbnail;
+    if (item.enclosure && item.enclosure.link) return item.enclosure.link;
+    
+    const htmlContent = item.content || item.description || '';
+    const imgMatch = htmlContent.match(/<img[^>]+src=["']([^"']+)["']/i);
+    return imgMatch ? imgMatch[1] : 'logo.png';
+  }
+
+  // Helper to strip HTML tags for card descriptions
+  function cleanDescription(htmlStr) {
+    const tmp = document.createElement('div');
+    tmp.innerHTML = htmlStr || '';
+    const text = tmp.textContent || tmp.innerText || '';
+    return text.length > 120 ? text.substring(0, 117) + '...' : text;
+  }
+
+  async function fetchLiveFeed(rssUrl) {
+    try {
+      const response = await fetch(RSS_CONVERTER + encodeURIComponent(rssUrl));
+      if (!response.ok) return [];
+      const data = await response.json();
+      return data.status === 'ok' ? data.items : [];
+    } catch (err) {
+      console.warn('Feed fetch failed for:', rssUrl, err);
+      return [];
     }
-  ];
+  }
 
-  // Render Carousel Uploads with Thumbnails
-  const carouselTrack = document.getElementById('carouselTrack');
+  async function loadAllCarouselContent() {
+    const carouselTrack = document.getElementById('carouselTrack');
 
-  function renderCarousel() {
-    if (!carouselTrack) return;
+    // Fetch Substack and YouTube live feeds concurrently
+    const [substackItems, youtubeItems] = await Promise.all([
+      fetchLiveFeed(SUBSTACK_FEED),
+      fetchLiveFeed(YOUTUBE_FEED)
+    ]);
 
-    if (latestUploads.length === 0) {
-      carouselTrack.innerHTML = `<p style="color: var(--text-muted); padding: 1rem;">No recent uploads added yet.</p>`;
+    // Format Substack items (Articles, Podcasts, Notes)
+    const formattedSubstack = substackItems.map(item => {
+      const isPodcast = item.link.includes('/p/') && (item.enclosure?.type?.includes('audio') || false);
+      return {
+        category: isPodcast ? 'PODCAST' : 'SUBSTACK',
+        title: item.title,
+        description: cleanDescription(item.description),
+        thumbnail: extractThumbnail(item),
+        url: item.link,
+        date: new Date(item.pubDate)
+      };
+    });
+
+    // Format YouTube items (Long form and Shorts)
+    const formattedYouTube = youtubeItems.map(item => {
+      const isShort = item.link.includes('/shorts/');
+      return {
+        category: isShort ? 'YOUTUBE SHORT' : 'YOUTUBE',
+        title: item.title,
+        description: cleanDescription(item.description),
+        thumbnail: extractThumbnail(item),
+        url: item.link,
+        date: new Date(item.pubDate)
+      };
+    });
+
+    // Custom internal uploads (e.g. RP platform updates or static site additions)
+    const internalItems = [
+      {
+        category: 'SIMULATION',
+        title: 'BYTHERIM RP Universe Live Database',
+        description: 'Explore high school recruiting rankings, prospect sheets, and live sim updates.',
+        thumbnail: 'logo.png',
+        url: './rp/',
+        date: new Date()
+      }
+    ];
+
+    // Combine all posts and sort chronologically (Newest First)
+    const allUploads = [...formattedSubstack, ...formattedYouTube, ...internalItems]
+      .sort((a, b) => b.date - a.date);
+
+    if (allUploads.length === 0) {
+      carouselTrack.innerHTML = `<p style="color: var(--text-muted); padding: 1rem;">No recent posts found.</p>`;
       return;
     }
 
-    carouselTrack.innerHTML = latestUploads.map(item => `
+    // Render cards into the carousel
+    carouselTrack.innerHTML = allUploads.map(item => `
       <a href="${item.url}" 
          class="card slide" 
-         ${item.external ? 'target="_blank" rel="noopener"' : ''}>
-        ${item.thumbnail ? `
-          <div class="card-img-wrapper">
-            <img src="${item.thumbnail}" alt="${item.title}" loading="lazy">
-          </div>
-        ` : ''}
+         target="_blank" 
+         rel="noopener">
+        <div class="card-img-wrapper">
+          <img src="${item.thumbnail}" alt="${item.title}" loading="lazy" onerror="this.src='logo.png';">
+        </div>
         <div class="card-tag">${item.category}</div>
         <h3>${item.title}</h3>
         <p>${item.description}</p>
+        <div class="card-meta-date">${item.date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}</div>
       </a>
     `).join('');
   }
 
-  renderCarousel();
+  loadAllCarouselContent();
 
   // Carousel Navigation Controls
   const track = document.getElementById('carouselTrack');
